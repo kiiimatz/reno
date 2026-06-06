@@ -549,23 +549,48 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 let edges = [];
 let stations = [];
 let tunnels = [];
+let ws = null;
 
 async function init() {
   const res = await fetch('/api/stations');
   if (res.status === 401) { showLogin(); return; }
   showApp();
-  refresh();
-  setInterval(refresh, 5000);
+  connectWS();
 }
 
 function showLogin() {
   document.getElementById('login-view').style.display = 'flex';
   document.getElementById('app-view').style.display = 'none';
+  if (ws) { ws.close(); ws = null; }
 }
 
 function showApp() {
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'block';
+}
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/api/ws');
+  ws.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+    edges    = data.edges    || [];
+    stations = data.stations || [];
+    tunnels  = data.tunnels  || [];
+    renderEdges();
+    renderStations();
+    renderEdgeSelect();
+    renderStationSelect();
+    renderTunnels();
+  };
+  ws.onclose = function() {
+    ws = null;
+    setTimeout(function() {
+      // Only reconnect if app is visible (not logged out)
+      if (document.getElementById('app-view').style.display !== 'none') connectWS();
+    }, 3000);
+  };
+  ws.onerror = function() { ws && ws.close(); };
 }
 
 async function doLogin() {
@@ -576,7 +601,7 @@ async function doLogin() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password })
   });
-  if (res.ok) { showApp(); refresh(); setInterval(refresh, 5000); }
+  if (res.ok) { showApp(); connectWS(); }
   else document.getElementById('login-error').textContent = 'Invalid credentials';
 }
 
@@ -587,7 +612,7 @@ async function refresh() {
     fetch('/api/tunnels')
   ]);
   if (sRes.status === 401) { showLogin(); return; }
-  edges   = (await eRes.json()).edges   || [];
+  edges    = (await eRes.json()).edges    || [];
   stations = (await sRes.json()).stations || [];
   tunnels  = (await tRes.json()).tunnels  || [];
   renderEdges();
@@ -785,6 +810,40 @@ export default {
       });
     }
 
+    // WebSocket for real-time dashboard updates
+    if (path === '/api/ws' && request.headers.get('Upgrade') === 'websocket') {
+      const authed = await requireAuth(request, env);
+      if (!authed) return unauthorized();
+
+      const pair = new WebSocketPair();
+      const [client, server] = [pair[0], pair[1]];
+      server.accept();
+
+      const sendState = async () => {
+        const [edgeList, stationList, tunnelList] = await Promise.all([
+          getEdges(env.RENO_KV),
+          getStations(env.RENO_KV),
+          getTunnels(env.RENO_KV),
+        ]);
+        const now = Date.now();
+        for (const e of edgeList) {
+          if (now - new Date(e.lastSeen).getTime() > 60000) e.status = 'offline';
+        }
+        for (const s of stationList) {
+          if (now - new Date(s.lastSeen).getTime() > 60000) s.status = 'offline';
+        }
+        try {
+          server.send(JSON.stringify({ edges: edgeList, stations: stationList, tunnels: tunnelList }));
+        } catch {}
+      };
+
+      await sendState();
+      const timer = setInterval(sendState, 2000);
+      server.addEventListener('close', () => clearInterval(timer));
+
+      return new Response(null, { status: 101, webSocket: client } as ResponseInit);
+    }
+
     // Edge register (uses API_SECRET)
     if (path === '/api/edges/register' && method === 'POST') {
       const body = await request.json() as { name: string; secret: string };
@@ -812,6 +871,22 @@ export default {
       }
 
       return json({ edge_id: edgeId });
+    }
+
+    // Edge offline (uses API_SECRET)
+    const edgeOfflineMatch = path.match(/^\/api\/edges\/([^/]+)\/offline$/);
+    if (edgeOfflineMatch && method === 'POST') {
+      const secret = url.searchParams.get('secret');
+      if (secret !== env.API_SECRET) return unauthorized();
+
+      const edgeId = edgeOfflineMatch[1];
+      const edges = await getEdges(env.RENO_KV);
+      const edge = edges.find(e => e.id === edgeId);
+      if (edge) {
+        edge.status = 'offline';
+        await saveEdges(env.RENO_KV, edges);
+      }
+      return json({ ok: true });
     }
 
     // Edge heartbeat (uses API_SECRET)
@@ -903,6 +978,22 @@ export default {
       const stationTunnels = allTunnels.filter(t => t.stationId === stationId);
 
       return json({ tunnels: stationTunnels });
+    }
+
+    // Station offline (uses API_SECRET)
+    const stationOfflineMatch = path.match(/^\/api\/stations\/([^/]+)\/offline$/);
+    if (stationOfflineMatch && method === 'POST') {
+      const secret = url.searchParams.get('secret');
+      if (secret !== env.API_SECRET) return unauthorized();
+
+      const stationId = stationOfflineMatch[1];
+      const stations = await getStations(env.RENO_KV);
+      const station = stations.find(s => s.id === stationId);
+      if (station) {
+        station.status = 'offline';
+        await saveStations(env.RENO_KV, stations);
+      }
+      return json({ ok: true });
     }
 
     // Station heartbeat (uses API_SECRET)

@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"runtime"
@@ -30,6 +31,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/kiiimatz/reno/pkg/protocol"
@@ -443,6 +445,17 @@ type udpReturn struct {
 
 // ─── Station daemon ───────────────────────────────────────────────────────────
 
+func markStationOffline(cfg Config) {
+	if stationID == "" {
+		return
+	}
+	url := fmt.Sprintf("%s/api/stations/%s/offline?secret=%s", cfg.DashboardURL, stationID, cfg.APISecret)
+	resp, err := http.Post(url, "application/json", nil)
+	if err == nil {
+		resp.Body.Close()
+	}
+}
+
 func runStationDaemon() {
 	cfg := loadConfig()
 	if cfg.Station.Name == "" {
@@ -463,6 +476,16 @@ func runStationDaemon() {
 	go pollTunnels(cfg)
 	go heartbeat(cfg)
 	go cleanupUDPSessions()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sigCh
+		log.Printf("Shutting down, marking station offline...")
+		markStationOffline(cfg)
+		os.Exit(0)
+	}()
+
 	startControlServer(cfg)
 }
 
@@ -946,6 +969,17 @@ type localChannel struct {
 
 // ─── Edge daemon ──────────────────────────────────────────────────────────────
 
+func markEdgeOffline(cfg Config) {
+	if dashboardEdgeID == "" {
+		return
+	}
+	url := fmt.Sprintf("%s/api/edges/%s/offline?secret=%s", cfg.DashboardURL, dashboardEdgeID, cfg.APISecret)
+	resp, err := http.Post(url, "application/json", nil)
+	if err == nil {
+		resp.Body.Close()
+	}
+}
+
 func registerEdgeWithDashboard(cfg Config, name string) {
 	body := map[string]interface{}{
 		"name":   name,
@@ -999,6 +1033,15 @@ func runEdgeDaemon() {
 
 	registerEdgeWithDashboard(cfg, edgeName)
 	go edgeHeartbeatLoop(cfg)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sigCh
+		log.Printf("Shutting down, marking edge offline...")
+		markEdgeOffline(cfg)
+		os.Exit(0)
+	}()
 
 	// Use "auto" when station_id is not specified — connects to first station
 	stationRef := cfg.Edge.StationID
