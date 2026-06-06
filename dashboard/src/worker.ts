@@ -26,15 +26,15 @@ interface Station {
 
 interface Tunnel {
   id: string;
-  edgeId: string;
-  stationId: string;
+  edge_id: string;
+  station_id: string;
   name: string;
   protocol: 'TCP' | 'UDP' | 'QUIC' | 'HTTP' | 'HTTPS';
-  localHost: string;
-  localPort: number;
-  remotePort: number;
+  local_host: string;
+  local_port: number;
+  remote_port: number;
   status: 'active' | 'idle';
-  createdAt: string;
+  created_at: string;
 }
 
 // --- Crypto utilities ---
@@ -680,13 +680,13 @@ function renderTunnels() {
   const list = document.getElementById('tunnel-list');
   if (!tunnels.length) { list.innerHTML = '<div class="empty">No tunnels yet</div>'; return; }
   list.innerHTML = tunnels.map(t => {
-    const edgeName    = (edges.find(e => e.id === t.edgeId) || {}).name || t.edgeId || '?';
-    const stationName = (stations.find(s => s.id === t.stationId) || {}).name || t.stationId || '?';
+    const edgeName    = (edges.find(e => e.id === t.edge_id) || {}).name || t.edge_id || '?';
+    const stationName = (stations.find(s => s.id === t.station_id) || {}).name || t.station_id || '?';
     const statusCls   = t.status === 'active' ? 'badge active' : 'badge';
     return '<div class="tunnel-item">' +
       '<div class="tunnel-info">' +
         '<div class="tunnel-name">' + esc(t.name) + '</div>' +
-        '<div class="tunnel-meta">' + esc(t.localHost) + ':' + t.localPort + ' &rarr; :' + t.remotePort + '</div>' +
+        '<div class="tunnel-meta">' + esc(t.local_host) + ':' + t.local_port + ' &rarr; :' + t.remote_port + '</div>' +
         '<div class="tunnel-route">' + esc(edgeName) + ' &rarr; ' + esc(stationName) + '</div>' +
       '</div>' +
       '<div class="tunnel-right">' +
@@ -975,7 +975,7 @@ export default {
 
       const stationId = tunnelsForStationMatch[1];
       const allTunnels = await getTunnels(env.RENO_KV);
-      const stationTunnels = allTunnels.filter(t => t.stationId === stationId);
+      const stationTunnels = allTunnels.filter(t => t.station_id === stationId);
 
       return json({ tunnels: stationTunnels });
     }
@@ -1075,15 +1075,15 @@ export default {
       };
       const tunnel: Tunnel = {
         id: generateId(),
-        edgeId: body.edge_id,
-        stationId: body.station_id,
+        edge_id: body.edge_id,
+        station_id: body.station_id,
         name: body.name,
         protocol: body.protocol || 'TCP',
-        localHost: body.local_host || '127.0.0.1',
-        localPort: body.local_port,
-        remotePort: body.remote_port,
+        local_host: body.local_host || '127.0.0.1',
+        local_port: body.local_port,
+        remote_port: body.remote_port,
         status: 'idle',
-        createdAt: new Date().toISOString(),
+        created_at: new Date().toISOString(),
       };
       const tunnels = await getTunnels(env.RENO_KV);
       tunnels.push(tunnel);
