@@ -6,6 +6,14 @@ export interface Env {
   API_SECRET: string;
 }
 
+interface Edge {
+  id: string;
+  name: string;
+  registeredAt: string;
+  lastSeen: string;
+  status: 'online' | 'offline';
+}
+
 interface Station {
   id: string;
   name: string;
@@ -18,6 +26,7 @@ interface Station {
 
 interface Tunnel {
   id: string;
+  edgeId: string;
   stationId: string;
   name: string;
   protocol: 'TCP' | 'UDP' | 'QUIC' | 'HTTP' | 'HTTPS';
@@ -108,6 +117,15 @@ async function jwtVerify(token: string, secret: string): Promise<object | null> 
 
 // --- KV helpers ---
 
+async function getEdges(kv: KVNamespace): Promise<Edge[]> {
+  const data = await kv.get('edges');
+  return data ? JSON.parse(data) : [];
+}
+
+async function saveEdges(kv: KVNamespace, edges: Edge[]): Promise<void> {
+  await kv.put('edges', JSON.stringify(edges));
+}
+
 async function getStations(kv: KVNamespace): Promise<Station[]> {
   const data = await kv.get('stations');
   return data ? JSON.parse(data) : [];
@@ -171,8 +189,10 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     --text: #e8e8ea;
     --text2: #8a8a8e;
     --text3: #5a5a5e;
-    --active: #22c55e;
-    --active-bg: #14532d;
+    --online: #22c55e;
+    --online-bg: #14532d;
+    --offline: #71717a;
+    --offline-bg: #27272a;
     --btn-bg: #f4f4f5;
     --btn-text: #18181b;
     --logo-bg: #3b82f6;
@@ -187,8 +207,10 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     --text: #18181b;
     --text2: #52525b;
     --text3: #a1a1aa;
-    --active: #16a34a;
-    --active-bg: #dcfce7;
+    --online: #16a34a;
+    --online-bg: #dcfce7;
+    --offline: #71717a;
+    --offline-bg: #f4f4f5;
     --btn-bg: #18181b;
     --btn-text: #f4f4f5;
     --input-bg: #f4f4f5;
@@ -203,25 +225,28 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     transition: background 0.2s, color 0.2s;
   }
 
-  .app { position: relative; max-width: 640px; margin: 0 auto; padding: 40px 16px; }
+  .app { position: relative; max-width: 700px; margin: 0 auto; padding: 40px 16px; }
 
   .top-bar {
     position: absolute;
     top: 16px; right: 16px;
-    display: flex; align-items: center; gap: 8px;
   }
 
-  .menu-btn {
-    background: none; border: none; cursor: pointer;
-    color: var(--text2); font-size: 18px; letter-spacing: 2px;
-    padding: 4px 8px;
+  .light-btn {
+    background: none;
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    color: var(--text);
+    cursor: pointer;
+    padding: 6px 14px;
+    font-size: 13px;
   }
 
   .header {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 32px;
+    margin-bottom: 28px;
   }
 
   .logo-icon {
@@ -238,26 +263,18 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     letter-spacing: -0.5px;
   }
 
-  .header-right {
-    margin-left: auto;
-  }
-
-  .light-btn {
-    background: none;
-    border: 1.5px solid var(--border);
-    border-radius: 20px;
-    color: var(--text);
-    cursor: pointer;
-    padding: 6px 14px;
-    font-size: 13px;
-    display: flex; align-items: center; gap: 6px;
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
   }
 
   .card {
     background: var(--surface);
     border-radius: 14px;
-    padding: 24px;
-    margin-bottom: 16px;
+    padding: 20px;
+    margin-bottom: 12px;
   }
 
   .section-title {
@@ -266,31 +283,67 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     letter-spacing: 1.2px;
     color: var(--text2);
     text-transform: uppercase;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
 
-  .form-row {
+  .node-list { display: flex; flex-direction: column; gap: 2px; }
+
+  .node-item {
     display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
     gap: 8px;
-    align-items: flex-start;
-    flex-wrap: wrap;
   }
 
-  .form-col { display: flex; flex-direction: column; gap: 6px; }
-  .form-col label { font-size: 12px; color: var(--text2); }
+  .node-item:last-child { border-bottom: none; }
 
-  .form-col.station { flex: 1.2; min-width: 120px; }
-  .form-col.protocol { flex: 0.8; min-width: 90px; }
-  .form-col.ip { flex: 2; min-width: 140px; }
-  .form-col.port { flex: 1; min-width: 90px; }
+  .node-name { flex: 1; font-size: 13px; font-weight: 500; }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot.online { background: var(--online); }
+  .dot.offline { background: var(--offline); }
+
+  .status-text {
+    font-size: 11px;
+  }
+  .status-text.online { color: var(--online); }
+  .status-text.offline { color: var(--offline); }
+
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .del-btn:hover { color: #ef4444; }
+
+  .empty { color: var(--text3); font-size: 12px; padding: 8px 0; }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .form-col { display: flex; flex-direction: column; gap: 5px; }
+  .form-col label { font-size: 11px; color: var(--text2); }
+  .form-col.full { grid-column: 1 / -1; }
 
   input, select {
     background: var(--surface2);
     border: 1.5px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-size: 14px;
-    padding: 10px 12px;
+    font-size: 13px;
+    padding: 9px 10px;
     width: 100%;
     outline: none;
     transition: border-color 0.15s;
@@ -301,7 +354,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   .form-actions {
     display: flex;
     justify-content: flex-end;
-    margin-top: 12px;
+    margin-top: 10px;
   }
 
   .btn-primary {
@@ -310,64 +363,50 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     border: none;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
-    padding: 10px 20px;
+    padding: 9px 18px;
   }
 
-  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:hover { opacity: 0.88; }
 
   .tunnel-list { display: flex; flex-direction: column; }
 
   .tunnel-item {
     display: flex;
     align-items: center;
-    padding: 14px 0;
+    padding: 12px 0;
     border-bottom: 1px solid var(--border);
-    gap: 12px;
+    gap: 10px;
   }
 
   .tunnel-item:last-child { border-bottom: none; }
 
   .tunnel-info { flex: 1; min-width: 0; }
-  .tunnel-name { font-weight: 600; font-size: 14px; }
-  .tunnel-addr { font-size: 12px; color: var(--text2); margin-top: 2px; font-family: 'SF Mono', 'Consolas', monospace; }
+  .tunnel-name { font-weight: 600; font-size: 13px; }
+  .tunnel-meta { font-size: 11px; color: var(--text2); margin-top: 3px; font-family: 'SF Mono', 'Consolas', monospace; }
+  .tunnel-route { font-size: 11px; color: var(--text3); margin-top: 1px; }
 
   .tunnel-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
   }
 
   .badge {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
-    padding: 3px 10px;
-    border-radius: 6px;
+    padding: 2px 8px;
+    border-radius: 5px;
     background: var(--surface2);
     color: var(--text2);
   }
 
   .badge.active {
-    background: var(--active-bg);
-    color: var(--active);
+    background: var(--online-bg);
+    color: var(--online);
   }
-
-  .delete-btn {
-    background: var(--surface2);
-    border: 1.5px solid var(--border);
-    border-radius: 8px;
-    color: var(--text2);
-    cursor: pointer;
-    width: 32px; height: 32px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-  }
-
-  .delete-btn:hover { border-color: #ef4444; color: #ef4444; }
-
-  .empty { color: var(--text3); text-align: center; padding: 24px 0; font-size: 13px; }
 
   /* Login */
   .login-wrap {
@@ -440,16 +479,33 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     <span class="logo-text">reno</span>
   </div>
 
+  <div class="two-col">
+    <div class="card" style="margin-bottom:0">
+      <div class="section-title">Edges</div>
+      <div class="node-list" id="edge-list"><div class="empty">Loading...</div></div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div class="section-title">Stations</div>
+      <div class="node-list" id="station-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="section-title">Create Tunnel</div>
-    <div class="form-row">
-      <div class="form-col station">
-        <label>Station</label>
-        <select id="form-station">
-          <option value="">Select...</option>
+    <div class="form-grid">
+      <div class="form-col">
+        <label>Edge</label>
+        <select id="form-edge">
+          <option value="">Select edge...</option>
         </select>
       </div>
-      <div class="form-col protocol">
+      <div class="form-col">
+        <label>Station</label>
+        <select id="form-station">
+          <option value="">Select station...</option>
+        </select>
+      </div>
+      <div class="form-col">
         <label>Protocol</label>
         <select id="form-protocol">
           <option>TCP</option>
@@ -459,23 +515,21 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
           <option>HTTPS</option>
         </select>
       </div>
-      <div class="form-col ip">
-        <label>IP</label>
+      <div class="form-col">
+        <label>Local IP</label>
         <input type="text" id="form-ip" placeholder="127.0.0.1" value="127.0.0.1" />
       </div>
-      <div class="form-col port">
-        <label>Port</label>
+      <div class="form-col">
+        <label>Local Port</label>
         <input type="number" id="form-port" placeholder="8080" />
       </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <div class="form-col" style="flex:1">
-        <label>Name</label>
-        <input type="text" id="form-name" placeholder="my-service" />
-      </div>
-      <div class="form-col" style="flex:1">
+      <div class="form-col">
         <label>Remote Port (on Station)</label>
         <input type="number" id="form-remote-port" placeholder="13000" />
+      </div>
+      <div class="form-col full">
+        <label>Name</label>
+        <input type="text" id="form-name" placeholder="my-service" />
       </div>
     </div>
     <div class="form-actions">
@@ -492,19 +546,16 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 </div>
 
 <script>
+let edges = [];
 let stations = [];
 let tunnels = [];
-let refreshTimer = null;
 
 async function init() {
   const res = await fetch('/api/stations');
-  if (res.status === 401) {
-    showLogin();
-    return;
-  }
+  if (res.status === 401) { showLogin(); return; }
   showApp();
   refresh();
-  refreshTimer = setInterval(refresh, 5000);
+  setInterval(refresh, 5000);
 }
 
 function showLogin() {
@@ -525,37 +576,76 @@ async function doLogin() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password })
   });
-  if (res.ok) {
-    showApp();
-    refresh();
-    refreshTimer = setInterval(refresh, 5000);
-  } else {
-    document.getElementById('login-error').textContent = 'Invalid credentials';
-  }
+  if (res.ok) { showApp(); refresh(); setInterval(refresh, 5000); }
+  else document.getElementById('login-error').textContent = 'Invalid credentials';
 }
 
 async function refresh() {
-  const [sRes, tRes] = await Promise.all([
+  const [eRes, sRes, tRes] = await Promise.all([
+    fetch('/api/edges'),
     fetch('/api/stations'),
     fetch('/api/tunnels')
   ]);
   if (sRes.status === 401) { showLogin(); return; }
-  const sData = await sRes.json();
-  const tData = await tRes.json();
-  stations = sData.stations || [];
-  tunnels = tData.tunnels || [];
+  edges   = (await eRes.json()).edges   || [];
+  stations = (await sRes.json()).stations || [];
+  tunnels  = (await tRes.json()).tunnels  || [];
+  renderEdges();
+  renderStations();
+  renderEdgeSelect();
   renderStationSelect();
   renderTunnels();
+}
+
+function renderEdges() {
+  const el = document.getElementById('edge-list');
+  if (!edges.length) { el.innerHTML = '<div class="empty">No edges</div>'; return; }
+  el.innerHTML = edges.map(e => {
+    const cls = e.status === 'online' ? 'online' : 'offline';
+    return '<div class="node-item">' +
+      '<span class="dot ' + cls + '"></span>' +
+      '<span class="node-name">' + esc(e.name) + '</span>' +
+      '<span class="status-text ' + cls + '">' + e.status + '</span>' +
+      '<button class="del-btn" data-edge-id="' + esc(e.id) + '">&#x2715;</button>' +
+    '</div>';
+  }).join('');
+}
+
+function renderStations() {
+  const el = document.getElementById('station-list');
+  if (!stations.length) { el.innerHTML = '<div class="empty">No stations</div>'; return; }
+  el.innerHTML = stations.map(s => {
+    const cls = s.status === 'online' ? 'online' : 'offline';
+    return '<div class="node-item">' +
+      '<span class="dot ' + cls + '"></span>' +
+      '<span class="node-name">' + esc(s.name) + '</span>' +
+      '<span class="status-text ' + cls + '">' + s.status + '</span>' +
+      '<button class="del-btn" data-station-id="' + esc(s.id) + '">&#x2715;</button>' +
+    '</div>';
+  }).join('');
+}
+
+function renderEdgeSelect() {
+  const sel = document.getElementById('form-edge');
+  const val = sel.value;
+  sel.innerHTML = '<option value="">Select edge...</option>';
+  for (const e of edges) {
+    const opt = document.createElement('option');
+    opt.value = e.id;
+    opt.textContent = e.name + (e.status === 'offline' ? ' (offline)' : '');
+    if (e.id === val) opt.selected = true;
+    sel.appendChild(opt);
+  }
 }
 
 function renderStationSelect() {
   const sel = document.getElementById('form-station');
   const val = sel.value;
-  sel.innerHTML = '<option value="">Select...</option>';
+  sel.innerHTML = '<option value="">Select station...</option>';
   for (const s of stations) {
     const opt = document.createElement('option');
     opt.value = s.id;
-    opt.textContent = s.name;
+    opt.textContent = s.name + (s.status === 'offline' ? ' (offline)' : '');
     if (s.id === val) opt.selected = true;
     sel.appendChild(opt);
   }
@@ -563,42 +653,44 @@ function renderStationSelect() {
 
 function renderTunnels() {
   const list = document.getElementById('tunnel-list');
-  if (!tunnels.length) {
-    list.innerHTML = '<div class="empty">No tunnels yet</div>';
-    return;
-  }
+  if (!tunnels.length) { list.innerHTML = '<div class="empty">No tunnels yet</div>'; return; }
   list.innerHTML = tunnels.map(t => {
-    const stationName = (stations.find(s => s.id === t.stationId) || {}).name || t.stationId;
-    const statusClass = t.status === 'active' ? 'badge active' : 'badge';
+    const edgeName    = (edges.find(e => e.id === t.edgeId) || {}).name || t.edgeId || '?';
+    const stationName = (stations.find(s => s.id === t.stationId) || {}).name || t.stationId || '?';
+    const statusCls   = t.status === 'active' ? 'badge active' : 'badge';
     return '<div class="tunnel-item">' +
       '<div class="tunnel-info">' +
-        '<div class="tunnel-name">' + esc(t.name || stationName) + '</div>' +
-        '<div class="tunnel-addr">' + esc(t.localHost) + ':' + t.localPort + ' &rarr; :' + t.remotePort + '</div>' +
+        '<div class="tunnel-name">' + esc(t.name) + '</div>' +
+        '<div class="tunnel-meta">' + esc(t.localHost) + ':' + t.localPort + ' &rarr; :' + t.remotePort + '</div>' +
+        '<div class="tunnel-route">' + esc(edgeName) + ' &rarr; ' + esc(stationName) + '</div>' +
       '</div>' +
       '<div class="tunnel-right">' +
         '<span class="badge">' + esc(t.protocol) + '</span>' +
-        '<span class="' + statusClass + '">' + esc(t.status) + '</span>' +
-        '<button class="delete-btn" data-id="' + esc(t.id) + '">&#x2715;</button>' +
+        '<span class="' + statusCls + '">' + esc(t.status) + '</span>' +
+        '<button class="del-btn" data-tunnel-id="' + esc(t.id) + '">&#x2715;</button>' +
       '</div>' +
     '</div>';
   }).join('');
 }
 
-// Event delegation for delete buttons — avoids inline onclick quoting issues
 document.addEventListener('click', function(e) {
-  const btn = e.target.closest('.delete-btn');
-  if (btn) deleteTunnel(btn.dataset.id);
+  const btn = e.target.closest('.del-btn');
+  if (!btn) return;
+  if (btn.dataset.tunnelId)  deleteTunnel(btn.dataset.tunnelId);
+  if (btn.dataset.edgeId)    deleteEdge(btn.dataset.edgeId);
+  if (btn.dataset.stationId) deleteStation(btn.dataset.stationId);
 });
 
 async function createTunnel() {
+  const edgeId    = document.getElementById('form-edge').value;
   const stationId = document.getElementById('form-station').value;
-  const protocol = document.getElementById('form-protocol').value;
+  const protocol  = document.getElementById('form-protocol').value;
   const localHost = document.getElementById('form-ip').value;
   const localPort = parseInt(document.getElementById('form-port').value);
-  const name = document.getElementById('form-name').value;
+  const name      = document.getElementById('form-name').value;
   const remotePort = parseInt(document.getElementById('form-remote-port').value);
 
-  if (!stationId || !localPort || !name || !remotePort) {
+  if (!edgeId || !stationId || !localPort || !name || !remotePort) {
     alert('Please fill in all fields');
     return;
   }
@@ -606,7 +698,7 @@ async function createTunnel() {
   const res = await fetch('/api/tunnels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ station_id: stationId, protocol, local_host: localHost, local_port: localPort, name, remote_port: remotePort })
+    body: JSON.stringify({ edge_id: edgeId, station_id: stationId, protocol, local_host: localHost, local_port: localPort, name, remote_port: remotePort })
   });
   if (res.ok) {
     document.getElementById('form-port').value = '';
@@ -621,10 +713,20 @@ async function deleteTunnel(id) {
   await refresh();
 }
 
+async function deleteEdge(id) {
+  await fetch('/api/edges/' + id, { method: 'DELETE' });
+  await refresh();
+}
+
+async function deleteStation(id) {
+  await fetch('/api/stations/' + id, { method: 'DELETE' });
+  await refresh();
+}
+
 function toggleTheme() {
   document.body.classList.toggle('light');
-  const btn = document.querySelector('.light-btn');
-  btn.textContent = document.body.classList.contains('light') ? '\uD83C\uDF19 dark' : '\u2600 light';
+  document.querySelector('.light-btn').textContent =
+    document.body.classList.contains('light') ? '\uD83C\uDF19 dark' : '\u2600 light';
 }
 
 function esc(str) {
@@ -683,6 +785,53 @@ export default {
       });
     }
 
+    // Edge register (uses API_SECRET)
+    if (path === '/api/edges/register' && method === 'POST') {
+      const body = await request.json() as { name: string; secret: string };
+      if (body.secret !== env.API_SECRET) return unauthorized();
+
+      const edges = await getEdges(env.RENO_KV);
+      const existing = edges.find(e => e.name === body.name);
+
+      let edgeId: string;
+      if (existing) {
+        edgeId = existing.id;
+        existing.lastSeen = new Date().toISOString();
+        existing.status = 'online';
+        await saveEdges(env.RENO_KV, edges);
+      } else {
+        edgeId = generateId();
+        edges.push({
+          id: edgeId,
+          name: body.name,
+          registeredAt: new Date().toISOString(),
+          lastSeen: new Date().toISOString(),
+          status: 'online',
+        });
+        await saveEdges(env.RENO_KV, edges);
+      }
+
+      return json({ edge_id: edgeId });
+    }
+
+    // Edge heartbeat (uses API_SECRET)
+    const edgeHeartbeatMatch = path.match(/^\/api\/edges\/([^/]+)\/heartbeat$/);
+    if (edgeHeartbeatMatch && method === 'POST') {
+      const secret = url.searchParams.get('secret');
+      if (secret !== env.API_SECRET) return unauthorized();
+
+      const edgeId = edgeHeartbeatMatch[1];
+      const edges = await getEdges(env.RENO_KV);
+      const edge = edges.find(e => e.id === edgeId);
+      if (edge) {
+        edge.lastSeen = new Date().toISOString();
+        edge.status = 'online';
+        await saveEdges(env.RENO_KV, edges);
+      }
+
+      return json({ ok: true });
+    }
+
     // Station register (uses API_SECRET, not JWT)
     if (path === '/api/stations/register' && method === 'POST') {
       const body = await request.json() as {
@@ -715,7 +864,6 @@ export default {
         await saveStations(env.RENO_KV, stations);
       }
 
-      // Store encrypted IP separately
       const encryptedInfo = await encryptInfo(
         env.API_SECRET,
         `${body.ip}:${body.control_port}:${body.cert_fingerprint}`
@@ -726,7 +874,6 @@ export default {
     }
 
     // Station connect info (for Edge, uses API_SECRET)
-    // station_id can be "auto" to pick the first registered station
     const connectMatch = path.match(/^\/api\/stations\/([^/]+)\/connect$/);
     if (connectMatch && method === 'GET') {
       const secret = url.searchParams.get('secret');
@@ -780,10 +927,30 @@ export default {
     const authed = await requireAuth(request, env);
     if (!authed) return unauthorized();
 
+    // GET /api/edges
+    if (path === '/api/edges' && method === 'GET') {
+      const edges = await getEdges(env.RENO_KV);
+      const now = Date.now();
+      for (const e of edges) {
+        if (now - new Date(e.lastSeen).getTime() > 120000) {
+          e.status = 'offline';
+        }
+      }
+      return json({ edges });
+    }
+
+    // DELETE /api/edges/:id
+    const deleteEdgeMatch = path.match(/^\/api\/edges\/([^/]+)$/);
+    if (deleteEdgeMatch && method === 'DELETE') {
+      const id = deleteEdgeMatch[1];
+      const edges = await getEdges(env.RENO_KV);
+      await saveEdges(env.RENO_KV, edges.filter(e => e.id !== id));
+      return json({ ok: true });
+    }
+
     // GET /api/stations
     if (path === '/api/stations' && method === 'GET') {
       const stations = await getStations(env.RENO_KV);
-      // Mark offline if not seen in 2 minutes
       const now = Date.now();
       for (const s of stations) {
         if (now - new Date(s.lastSeen).getTime() > 120000) {
@@ -811,11 +978,13 @@ export default {
     // POST /api/tunnels
     if (path === '/api/tunnels' && method === 'POST') {
       const body = await request.json() as {
-        station_id: string; name: string; protocol: 'TCP' | 'UDP' | 'QUIC' | 'HTTP' | 'HTTPS';
+        edge_id: string; station_id: string; name: string;
+        protocol: 'TCP' | 'UDP' | 'QUIC' | 'HTTP' | 'HTTPS';
         local_host: string; local_port: number; remote_port: number;
       };
       const tunnel: Tunnel = {
         id: generateId(),
+        edgeId: body.edge_id,
         stationId: body.station_id,
         name: body.name,
         protocol: body.protocol || 'TCP',

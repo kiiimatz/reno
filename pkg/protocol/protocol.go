@@ -24,8 +24,9 @@ const (
 )
 
 type AuthMsg struct {
-	Secret  string `json:"secret"`
-	Version string `json:"version"`
+	Secret          string `json:"secret"`
+	Version         string `json:"version"`
+	DashboardEdgeID string `json:"dashboard_edge_id,omitempty"`
 }
 
 type AuthOKMsg struct {
@@ -38,6 +39,7 @@ type AuthFailMsg struct {
 
 type TunnelConfig struct {
 	ID         string `json:"id"`
+	EdgeID     string `json:"edge_id,omitempty"`
 	Name       string `json:"name"`
 	LocalHost  string `json:"local_host"`
 	LocalPort  int    `json:"local_port"`

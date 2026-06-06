@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -52,6 +53,8 @@ type EdgeConfig struct {
 	// StationID is optional. Leave empty to auto-connect to the first
 	// registered station on the dashboard.
 	StationID string `json:"station_id"`
+	// Name identifies this edge in the dashboard. Defaults to hostname.
+	Name string `json:"name"`
 }
 
 func configPath() string {
@@ -59,6 +62,12 @@ func configPath() string {
 		return filepath.Join(os.Getenv("APPDATA"), "reno", "config.json")
 	}
 	home, _ := os.UserHomeDir()
+	// When running under sudo, use the invoking user's home (not root's)
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+		if u, err := user.Lookup(sudoUser); err == nil {
+			home = u.HomeDir
+		}
+	}
 	return filepath.Join(home, ".config", "reno", "config.json")
 }
 
@@ -415,8 +424,9 @@ var (
 )
 
 type edgeConn struct {
-	id     string
-	writer *protocol.Writer
+	id              string
+	dashboardEdgeID string
+	writer          *protocol.Writer
 }
 
 type tcpChannel struct {
@@ -582,7 +592,7 @@ func handleEdge(conn net.Conn, cfg Config) {
 	conn.SetDeadline(time.Time{})
 
 	edgeID := generateID()
-	edge := &edgeConn{id: edgeID, writer: writer}
+	edge := &edgeConn{id: edgeID, dashboardEdgeID: auth.DashboardEdgeID, writer: writer}
 	edgesMu.Lock()
 	edges[edgeID] = edge
 	edgesMu.Unlock()
@@ -634,9 +644,17 @@ func handleEdge(conn net.Conn, cfg Config) {
 
 func sendTunnelSync(edge *edgeConn) {
 	tunnelsMu.RLock()
-	t := make([]protocol.TunnelConfig, len(tunnels))
-	copy(t, tunnels)
+	var t []protocol.TunnelConfig
+	for _, tc := range tunnels {
+		// Send tunnel to this edge if unassigned (legacy) or explicitly targeted
+		if tc.EdgeID == "" || tc.EdgeID == edge.dashboardEdgeID {
+			t = append(t, tc)
+		}
+	}
 	tunnelsMu.RUnlock()
+	if t == nil {
+		t = []protocol.TunnelConfig{}
+	}
 	edge.writer.WriteControl(protocol.MsgTunnelSync, protocol.TunnelSyncMsg{Tunnels: t})
 }
 
@@ -913,7 +931,8 @@ func generateID() string {
 // ─── Edge globals ─────────────────────────────────────────────────────────────
 
 var (
-	edgeTunnels []protocol.TunnelConfig
+	edgeTunnels     []protocol.TunnelConfig
+	dashboardEdgeID string
 
 	localChannelsMu sync.RWMutex
 	localChannels   = make(map[uint32]*localChannel)
@@ -927,6 +946,43 @@ type localChannel struct {
 
 // ─── Edge daemon ──────────────────────────────────────────────────────────────
 
+func registerEdgeWithDashboard(cfg Config, name string) {
+	body := map[string]interface{}{
+		"name":   name,
+		"secret": cfg.APISecret,
+	}
+	data, _ := json.Marshal(body)
+	resp, err := http.Post(cfg.DashboardURL+"/api/edges/register", "application/json", bytes.NewReader(data))
+	if err != nil {
+		log.Printf("edge register: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	var result struct {
+		EdgeID string `json:"edge_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || result.EdgeID == "" {
+		log.Printf("edge register decode: %v", err)
+		return
+	}
+	dashboardEdgeID = result.EdgeID
+	log.Printf("Registered as edge %s (name: %s)", dashboardEdgeID, name)
+}
+
+func edgeHeartbeatLoop(cfg Config) {
+	for {
+		time.Sleep(30 * time.Second)
+		if dashboardEdgeID == "" {
+			continue
+		}
+		url := fmt.Sprintf("%s/api/edges/%s/heartbeat?secret=%s", cfg.DashboardURL, dashboardEdgeID, cfg.APISecret)
+		resp, err := http.Post(url, "application/json", nil)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+}
+
 func runEdgeDaemon() {
 	cfg := loadConfig()
 	if cfg.APISecret == "" {
@@ -935,6 +991,14 @@ func runEdgeDaemon() {
 	if cfg.DashboardURL == "" {
 		log.Fatal("dashboard_url is not set in config")
 	}
+
+	edgeName := cfg.Edge.Name
+	if edgeName == "" {
+		edgeName, _ = os.Hostname()
+	}
+
+	registerEdgeWithDashboard(cfg, edgeName)
+	go edgeHeartbeatLoop(cfg)
 
 	// Use "auto" when station_id is not specified — connects to first station
 	stationRef := cfg.Edge.StationID
@@ -1009,7 +1073,7 @@ func edgeRun(cfg Config, stationRef string) error {
 
 	log.Printf("Connected to station %s:%d", host, port)
 	writer := protocol.NewWriter(conn)
-	writer.WriteControl(protocol.MsgAuth, protocol.AuthMsg{Secret: cfg.APISecret, Version: "1"})
+	writer.WriteControl(protocol.MsgAuth, protocol.AuthMsg{Secret: cfg.APISecret, Version: "1", DashboardEdgeID: dashboardEdgeID})
 
 	msg, err := protocol.ReadMessage(conn)
 	if err != nil {
