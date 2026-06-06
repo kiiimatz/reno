@@ -81,6 +81,8 @@ func loadConfig() Config {
 	return cfg
 }
 
+var version = "dev"
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 func main() {
@@ -95,6 +97,10 @@ func main() {
 		installAndStart("edge")
 	case "down":
 		runDown()
+	case "remove":
+		runRemove()
+	case "version", "--version", "-v":
+		fmt.Printf("reno %s\n", version)
 	case "config":
 		runConfig()
 	// Internal subcommands used by the OS service manager — not shown in help
@@ -109,10 +115,13 @@ func main() {
 }
 
 func printUsage() {
+	fmt.Printf("reno %s\n\n", version)
 	fmt.Println("Usage:")
 	fmt.Println("  reno station   Start Station in background (auto-start on boot)")
 	fmt.Println("  reno edge      Start Edge in background (auto-start on boot)")
 	fmt.Println("  reno down      Stop both Station and Edge")
+	fmt.Println("  reno remove    Uninstall services and binary")
+	fmt.Println("  reno version   Show version")
 	fmt.Println("  reno config    Edit configuration")
 }
 
@@ -160,6 +169,43 @@ func runDown() {
 		run("schtasks", "/End", "/TN", "RenoEdge")
 	}
 	fmt.Println("Reno stopped.")
+}
+
+func runRemove() {
+	exePath, _ := os.Executable()
+	exePath, _ = filepath.Abs(exePath)
+
+	switch runtime.GOOS {
+	case "linux":
+		run("systemctl", "stop", "reno-station")
+		run("systemctl", "stop", "reno-edge")
+		run("systemctl", "disable", "reno-station")
+		run("systemctl", "disable", "reno-edge")
+		os.Remove("/etc/systemd/system/reno-station.service")
+		os.Remove("/etc/systemd/system/reno-edge.service")
+		run("systemctl", "daemon-reload")
+	case "darwin":
+		stationPlist := "/Library/LaunchDaemons/com.kiiimatz.reno-station.plist"
+		edgePlist := "/Library/LaunchDaemons/com.kiiimatz.reno-edge.plist"
+		run("launchctl", "unload", stationPlist)
+		run("launchctl", "unload", edgePlist)
+		os.Remove(stationPlist)
+		os.Remove(edgePlist)
+	case "windows":
+		run("schtasks", "/End", "/TN", "RenoStation")
+		run("schtasks", "/End", "/TN", "RenoEdge")
+		run("schtasks", "/Delete", "/F", "/TN", "RenoStation")
+		run("schtasks", "/Delete", "/F", "/TN", "RenoEdge")
+	}
+
+	// Remove the binary itself
+	if err := os.Remove(exePath); err != nil {
+		fmt.Printf("Warning: could not remove binary %s: %v\n", exePath, err)
+	} else {
+		fmt.Printf("Removed %s\n", exePath)
+	}
+
+	fmt.Println("Reno removed.")
 }
 
 // ── Linux systemd ─────────────────────────────────────────────────────────────
