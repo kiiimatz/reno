@@ -715,16 +715,23 @@ export default {
     }
 
     // Station connect info (for Edge, uses API_SECRET)
+    // station_id can be "auto" to pick the first registered station
     const connectMatch = path.match(/^\/api\/stations\/([^/]+)\/connect$/);
     if (connectMatch && method === 'GET') {
       const secret = url.searchParams.get('secret');
       if (secret !== env.API_SECRET) return unauthorized();
 
-      const stationId = connectMatch[1];
+      let stationId = connectMatch[1];
+      if (stationId === 'auto') {
+        const stations = await getStations(env.RENO_KV);
+        if (!stations.length) return json({ error: 'no stations registered' }, 404);
+        stationId = stations[0].id;
+      }
+
       const encryptedInfo = await env.RENO_KV.get(`station_info:${stationId}`);
       if (!encryptedInfo) return json({ error: 'station not found' }, 404);
 
-      return json({ encrypted_info: encryptedInfo });
+      return json({ encrypted_info: encryptedInfo, station_id: stationId });
     }
 
     // Station tunnels (for Station polling, uses API_SECRET)

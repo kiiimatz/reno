@@ -49,6 +49,8 @@ type StationConfig struct {
 }
 
 type EdgeConfig struct {
+	// StationID is optional. Leave empty to auto-connect to the first
+	// registered station on the dashboard.
 	StationID string `json:"station_id"`
 }
 
@@ -84,11 +86,18 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "station":
-		runStation()
+		installAndStart("station")
 	case "edge":
-		runEdge()
+		installAndStart("edge")
+	case "down":
+		runDown()
 	case "config":
 		runConfig()
+	// Internal subcommands used by the OS service manager — not shown in help
+	case "station-daemon":
+		runStationDaemon()
+	case "edge-daemon":
+		runEdgeDaemon()
 	default:
 		printUsage()
 		os.Exit(1)
@@ -97,9 +106,142 @@ func main() {
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("  reno station   Start the Station server")
-	fmt.Println("  reno edge      Start the Edge client")
+	fmt.Println("  reno station   Start Station in background (auto-start on boot)")
+	fmt.Println("  reno edge      Start Edge in background (auto-start on boot)")
+	fmt.Println("  reno down      Stop both Station and Edge")
 	fmt.Println("  reno config    Edit configuration")
+}
+
+// ─── Service management ───────────────────────────────────────────────────────
+
+func installAndStart(component string) {
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Fatalf("get executable path: %v", err)
+	}
+	exePath, _ = filepath.Abs(exePath)
+
+	switch runtime.GOOS {
+	case "linux":
+		installSystemd(component, exePath)
+	case "darwin":
+		installLaunchd(component, exePath)
+	case "windows":
+		installWinTask(component, exePath)
+	default:
+		log.Fatalf("unsupported OS: %s", runtime.GOOS)
+	}
+
+	if component == "station" {
+		fmt.Println("Reno Stationing.")
+	} else {
+		fmt.Println("Reno Edging.")
+	}
+}
+
+func runDown() {
+	switch runtime.GOOS {
+	case "linux":
+		run("systemctl", "stop", "reno-station")
+		run("systemctl", "stop", "reno-edge")
+	case "darwin":
+		run("launchctl", "unload", "/Library/LaunchDaemons/com.kiiimatz.reno-station.plist")
+		run("launchctl", "unload", "/Library/LaunchDaemons/com.kiiimatz.reno-edge.plist")
+	case "windows":
+		run("schtasks", "/End", "/TN", "RenoStation")
+		run("schtasks", "/End", "/TN", "RenoEdge")
+	}
+	fmt.Println("Reno stopped.")
+}
+
+// ── Linux systemd ─────────────────────────────────────────────────────────────
+
+func installSystemd(component, exePath string) {
+	svcName := "reno-" + component
+	unit := fmt.Sprintf(`[Unit]
+Description=Reno %s
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=%s %s-daemon
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+`, strings.Title(component), exePath, component)
+
+	path := "/etc/systemd/system/" + svcName + ".service"
+	if err := os.WriteFile(path, []byte(unit), 0644); err != nil {
+		log.Fatalf("write service file: %v\nTry running with sudo.", err)
+	}
+	run("systemctl", "daemon-reload")
+	run("systemctl", "enable", svcName)
+	run("systemctl", "restart", svcName)
+}
+
+// ── macOS launchd ─────────────────────────────────────────────────────────────
+
+func installLaunchd(component, exePath string) {
+	label := "com.kiiimatz.reno-" + component
+	logPath := "/var/log/reno-" + component + ".log"
+	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>%s</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>%s</string>
+		<string>%s-daemon</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>%s</string>
+	<key>StandardErrorPath</key>
+	<string>%s</string>
+</dict>
+</plist>
+`, label, exePath, component, logPath, logPath)
+
+	plistPath := "/Library/LaunchDaemons/" + label + ".plist"
+	if err := os.WriteFile(plistPath, []byte(plist), 0644); err != nil {
+		log.Fatalf("write plist: %v\nTry running with sudo.", err)
+	}
+	// Unload first in case it was already loaded
+	exec.Command("launchctl", "unload", plistPath).Run()
+	run("launchctl", "load", plistPath)
+}
+
+// ── Windows Task Scheduler ────────────────────────────────────────────────────
+
+func installWinTask(component, exePath string) {
+	taskName := "Reno" + strings.Title(component)
+	logPath := filepath.Join(os.Getenv("APPDATA"), "reno", component+".log")
+	os.MkdirAll(filepath.Dir(logPath), 0700)
+
+	// Delete existing task if any, then create fresh
+	exec.Command("schtasks", "/Delete", "/F", "/TN", taskName).Run()
+
+	cmd := fmt.Sprintf(`%s %s-daemon >> "%s" 2>&1`, exePath, component, logPath)
+	run("schtasks", "/Create", "/F",
+		"/TN", taskName,
+		"/TR", cmd,
+		"/SC", "ONSTART",
+		"/RU", "SYSTEM",
+		"/RL", "HIGHEST",
+	)
+	run("schtasks", "/Run", "/TN", taskName)
+}
+
+// run executes a command, ignoring errors (best-effort for service management).
+func run(name string, args ...string) {
+	exec.Command(name, args...).Run()
 }
 
 // ─── Config command ───────────────────────────────────────────────────────────
@@ -121,6 +263,7 @@ func runConfig() {
 				ControlPort: 7000,
 			},
 			Edge: EdgeConfig{
+				// Empty = auto-connect to first station on dashboard
 				StationID: "",
 			},
 		}
@@ -128,7 +271,7 @@ func runConfig() {
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			log.Fatalf("write config: %v", err)
 		}
-		fmt.Printf("Created default config: %s\n", path)
+		fmt.Printf("Created config: %s\n", path)
 	} else {
 		fmt.Printf("Config: %s\n", path)
 	}
@@ -147,7 +290,7 @@ func runConfig() {
 		}
 	}
 	if editor == "" {
-		fmt.Printf("Edit the file manually: %s\n", path)
+		fmt.Printf("Edit manually: %s\n", path)
 		return
 	}
 	cmd := exec.Command(editor, path)
@@ -200,11 +343,9 @@ var (
 	edgesMu sync.RWMutex
 	edges   = make(map[string]*edgeConn)
 
-	// TCP channels: channelID → conn to external client
 	tcpChannelsMu sync.RWMutex
 	tcpChannels   = make(map[uint32]*tcpChannel)
 
-	// UDP return channels: channelID → where to send response packets back
 	udpReturnMu sync.RWMutex
 	udpReturns  = make(map[uint32]*udpReturn)
 
@@ -213,11 +354,9 @@ var (
 	tunnelsMu sync.RWMutex
 	tunnels   []protocol.TunnelConfig
 
-	// TCP listeners
 	tcpListenersMu sync.Mutex
 	tcpListeners   = make(map[string]net.Listener)
 
-	// UDP listeners
 	udpListenersMu sync.Mutex
 	udpListeners   = make(map[string]net.PacketConn)
 )
@@ -233,16 +372,15 @@ type tcpChannel struct {
 	closed bool
 }
 
-// udpReturn tracks where to send UDP response packets on Station side.
 type udpReturn struct {
 	pc       net.PacketConn
 	srcAddr  net.Addr
 	lastSeen time.Time
 }
 
-// ─── Station ──────────────────────────────────────────────────────────────────
+// ─── Station daemon ───────────────────────────────────────────────────────────
 
-func runStation() {
+func runStationDaemon() {
 	cfg := loadConfig()
 	if cfg.Station.Name == "" {
 		log.Fatal("station.name is not set in config")
@@ -412,22 +550,17 @@ func handleEdge(conn net.Conn, cfg Config) {
 			return
 		}
 		switch msg.Type {
-
 		case protocol.MsgChannelData:
-			// Could be a TCP channel or UDP return packet from Edge
 			tcpChannelsMu.RLock()
 			ch, isTCP := tcpChannels[msg.ChannelID]
 			tcpChannelsMu.RUnlock()
-
 			if isTCP {
-				// Stream data to external TCP client
 				ch.mu.Lock()
 				if !ch.closed {
 					ch.conn.Write(msg.Payload)
 				}
 				ch.mu.Unlock()
 			} else {
-				// UDP response: send packet back to original source
 				udpReturnMu.RLock()
 				ret, isUDP := udpReturns[msg.ChannelID]
 				udpReturnMu.RUnlock()
@@ -436,12 +569,10 @@ func handleEdge(conn net.Conn, cfg Config) {
 					ret.pc.WriteTo(msg.Payload, ret.srcAddr)
 				}
 			}
-
 		case protocol.MsgChannelClose:
 			var m protocol.ChannelCloseMsg
 			msg.DecodeJSON(&m)
 			closeTCPChannel(m.ChannelID)
-
 		case protocol.MsgPing:
 			writer.WriteControl(protocol.MsgPong, struct{}{})
 		}
@@ -473,8 +604,6 @@ func pickEdge() *edgeConn {
 	return nil
 }
 
-// ── TCP tunnel ────────────────────────────────────────────────────────────────
-
 func closeTCPChannel(channelID uint32) {
 	tcpChannelsMu.Lock()
 	ch, ok := tcpChannels[channelID]
@@ -500,7 +629,7 @@ func startTCPTunnelListener(t protocol.TunnelConfig) {
 	}
 	tcpListeners[t.ID] = ln
 	tcpListenersMu.Unlock()
-	log.Printf("[TCP] Tunnel %q listening on :%d", t.Name, t.RemotePort)
+	log.Printf("[TCP] Tunnel %q on :%d", t.Name, t.RemotePort)
 
 	for {
 		conn, err := ln.Accept()
@@ -517,7 +646,6 @@ func handleTCPTunnelConn(clientConn net.Conn, t protocol.TunnelConfig) {
 		clientConn.Close()
 		return
 	}
-
 	channelID := atomic.AddUint32(&channelCounter, 1)
 	if err := edge.writer.WriteControl(protocol.MsgChannelOpen, protocol.ChannelOpenMsg{
 		ChannelID: channelID,
@@ -527,7 +655,6 @@ func handleTCPTunnelConn(clientConn net.Conn, t protocol.TunnelConfig) {
 		clientConn.Close()
 		return
 	}
-
 	ch := &tcpChannel{conn: clientConn}
 	tcpChannelsMu.Lock()
 	tcpChannels[channelID] = ch
@@ -550,14 +677,6 @@ func handleTCPTunnelConn(clientConn net.Conn, t protocol.TunnelConfig) {
 	}
 }
 
-// ── UDP tunnel ────────────────────────────────────────────────────────────────
-
-// udpSession maps a remote source address to a channel ID for a given UDP listener.
-type udpSession struct {
-	channelID uint32
-	lastSeen  time.Time
-}
-
 func startUDPTunnelListener(t protocol.TunnelConfig) {
 	pc, err := net.ListenPacket("udp", fmt.Sprintf(":%d", t.RemotePort))
 	if err != nil {
@@ -570,10 +689,10 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 	}
 	udpListeners[t.ID] = pc
 	udpListenersMu.Unlock()
-	log.Printf("[UDP] Tunnel %q listening on :%d", t.Name, t.RemotePort)
+	log.Printf("[UDP] Tunnel %q on :%d", t.Name, t.RemotePort)
 
 	var sessionsMu sync.Mutex
-	sessions := make(map[string]*udpSession) // srcAddr → session
+	sessions := make(map[string]*udpSession)
 
 	buf := make([]byte, 65535)
 	for {
@@ -588,7 +707,6 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 		sessionsMu.Lock()
 		sess, exists := sessions[srcKey]
 		if !exists {
-			// new UDP session — open a channel to Edge
 			edge := pickEdge()
 			if edge == nil {
 				sessionsMu.Unlock()
@@ -597,12 +715,9 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 			channelID := atomic.AddUint32(&channelCounter, 1)
 			sess = &udpSession{channelID: channelID, lastSeen: time.Now()}
 			sessions[srcKey] = sess
-
-			// Register return path so Edge responses get sent back to src
 			udpReturnMu.Lock()
 			udpReturns[channelID] = &udpReturn{pc: pc, srcAddr: src, lastSeen: time.Now()}
 			udpReturnMu.Unlock()
-
 			edge.writer.WriteControl(protocol.MsgChannelOpen, protocol.ChannelOpenMsg{
 				ChannelID: channelID,
 				TunnelID:  t.ID,
@@ -613,15 +728,17 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 		channelID := sess.channelID
 		sessionsMu.Unlock()
 
-		// Forward packet to Edge
-		edge := pickEdge()
-		if edge != nil {
+		if edge := pickEdge(); edge != nil {
 			edge.writer.WriteData(channelID, pkt)
 		}
 	}
 }
 
-// cleanupUDPSessions removes stale UDP channels (no activity for 60s).
+type udpSession struct {
+	channelID uint32
+	lastSeen  time.Time
+}
+
 func cleanupUDPSessions() {
 	for {
 		time.Sleep(30 * time.Second)
@@ -635,8 +752,6 @@ func cleanupUDPSessions() {
 		udpReturnMu.Unlock()
 	}
 }
-
-// ── Tunnel lifecycle ──────────────────────────────────────────────────────────
 
 func pollTunnels(cfg Config) {
 	for {
@@ -686,8 +801,6 @@ func updateListeners(newTunnels []protocol.TunnelConfig) {
 	for _, t := range newTunnels {
 		newIDs[t.ID] = true
 	}
-
-	// Stop removed TCP listeners
 	tcpListenersMu.Lock()
 	for id, ln := range tcpListeners {
 		if !newIDs[id] {
@@ -696,8 +809,6 @@ func updateListeners(newTunnels []protocol.TunnelConfig) {
 		}
 	}
 	tcpListenersMu.Unlock()
-
-	// Stop removed UDP listeners
 	udpListenersMu.Lock()
 	for id, pc := range udpListeners {
 		if !newIDs[id] {
@@ -706,8 +817,6 @@ func updateListeners(newTunnels []protocol.TunnelConfig) {
 		}
 	}
 	udpListenersMu.Unlock()
-
-	// Start new listeners
 	for _, t := range newTunnels {
 		t := t
 		if t.IsUDP() {
@@ -758,19 +867,15 @@ var (
 )
 
 type localChannel struct {
-	conn   net.Conn
-	mu     sync.Mutex
+	conn  net.Conn
+	mu    sync.Mutex
 	closed bool
-	isUDP  bool
 }
 
-// ─── Edge ────────────────────────────────────────────────────────────────────
+// ─── Edge daemon ──────────────────────────────────────────────────────────────
 
-func runEdge() {
+func runEdgeDaemon() {
 	cfg := loadConfig()
-	if cfg.Edge.StationID == "" {
-		log.Fatal("edge.station_id is not set in config")
-	}
 	if cfg.APISecret == "" {
 		log.Fatal("api_secret is not set in config")
 	}
@@ -778,10 +883,16 @@ func runEdge() {
 		log.Fatal("dashboard_url is not set in config")
 	}
 
-	log.Printf("Reno Edge starting, station: %s", cfg.Edge.StationID)
+	// Use "auto" when station_id is not specified — connects to first station
+	stationRef := cfg.Edge.StationID
+	if stationRef == "" {
+		stationRef = "auto"
+	}
+
+	log.Printf("Reno Edge starting (station: %s)", stationRef)
 	backoff := time.Second
 	for {
-		if err := edgeRun(cfg); err != nil {
+		if err := edgeRun(cfg, stationRef); err != nil {
 			log.Printf("Disconnected: %v. Reconnecting in %s...", err, backoff)
 			time.Sleep(backoff)
 			if backoff < 60*time.Second {
@@ -793,8 +904,8 @@ func runEdge() {
 	}
 }
 
-func edgeRun(cfg Config) error {
-	url := fmt.Sprintf("%s/api/stations/%s/connect?secret=%s", cfg.DashboardURL, cfg.Edge.StationID, cfg.APISecret)
+func edgeRun(cfg Config, stationRef string) error {
+	url := fmt.Sprintf("%s/api/stations/%s/connect?secret=%s", cfg.DashboardURL, stationRef, cfg.APISecret)
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("fetch station info: %v", err)
@@ -803,6 +914,7 @@ func edgeRun(cfg Config) error {
 
 	var result struct {
 		EncryptedInfo string `json:"encrypted_info"`
+		StationID     string `json:"station_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("decode station info: %v", err)
@@ -813,9 +925,10 @@ func edgeRun(cfg Config) error {
 		return fmt.Errorf("decrypt station info: %v", err)
 	}
 
+	// plain = "host:port:fingerprint"
 	parts := strings.SplitN(plain, ":", 3)
 	if len(parts) != 3 {
-		return fmt.Errorf("invalid station info format: %q", plain)
+		return fmt.Errorf("invalid station info: %q", plain)
 	}
 	host, portStr, fingerprint := parts[0], parts[1], parts[2]
 	port, _ := strconv.Atoi(portStr)
@@ -867,16 +980,11 @@ func edgeRun(cfg Config) error {
 			return fmt.Errorf("read: %v", err)
 		}
 		switch msg.Type {
-
 		case protocol.MsgTunnelSync:
 			var sync protocol.TunnelSyncMsg
 			msg.DecodeJSON(&sync)
 			edgeTunnels = sync.Tunnels
-			names := make([]string, len(sync.Tunnels))
-			for i, t := range sync.Tunnels {
-				names[i] = fmt.Sprintf("%s(%s)", t.Name, t.Protocol)
-			}
-			log.Printf("Tunnel sync: %v", names)
+			log.Printf("Tunnel sync: %d tunnel(s)", len(edgeTunnels))
 
 		case protocol.MsgChannelOpen:
 			var open protocol.ChannelOpenMsg
@@ -910,24 +1018,20 @@ func edgeRun(cfg Config) error {
 	}
 }
 
-// ── Edge TCP channel ──────────────────────────────────────────────────────────
-
 func handleLocalTCPChannel(open protocol.ChannelOpenMsg, writer *protocol.Writer) {
 	tunnel := findTunnel(open.TunnelID)
 	if tunnel == nil {
 		writer.WriteControl(protocol.MsgChannelClose, protocol.ChannelCloseMsg{ChannelID: open.ChannelID})
 		return
 	}
-
 	addr := fmt.Sprintf("%s:%d", tunnel.LocalHost, tunnel.LocalPort)
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
-		log.Printf("[TCP] connect local %s: %v", addr, err)
+		log.Printf("[TCP] connect %s: %v", addr, err)
 		writer.WriteControl(protocol.MsgChannelClose, protocol.ChannelCloseMsg{ChannelID: open.ChannelID})
 		return
 	}
-
-	ch := &localChannel{conn: conn, isUDP: false}
+	ch := &localChannel{conn: conn}
 	localChannelsMu.Lock()
 	localChannels[open.ChannelID] = ch
 	localChannelsMu.Unlock()
@@ -949,38 +1053,28 @@ func handleLocalTCPChannel(open protocol.ChannelOpenMsg, writer *protocol.Writer
 	}
 }
 
-// ── Edge UDP channel ──────────────────────────────────────────────────────────
-
 func handleLocalUDPChannel(open protocol.ChannelOpenMsg, writer *protocol.Writer) {
 	tunnel := findTunnel(open.TunnelID)
 	if tunnel == nil {
 		writer.WriteControl(protocol.MsgChannelClose, protocol.ChannelCloseMsg{ChannelID: open.ChannelID})
 		return
 	}
-
 	addr := fmt.Sprintf("%s:%d", tunnel.LocalHost, tunnel.LocalPort)
-	// net.Dial("udp") creates a connected UDP socket — gives a net.Conn interface
 	conn, err := net.DialTimeout("udp", addr, 5*time.Second)
 	if err != nil {
-		log.Printf("[UDP] connect local %s: %v", addr, err)
+		log.Printf("[UDP] connect %s: %v", addr, err)
 		writer.WriteControl(protocol.MsgChannelClose, protocol.ChannelCloseMsg{ChannelID: open.ChannelID})
 		return
 	}
-
-	ch := &localChannel{conn: conn, isUDP: true}
+	ch := &localChannel{conn: conn}
 	localChannelsMu.Lock()
 	localChannels[open.ChannelID] = ch
 	localChannelsMu.Unlock()
 
-	defer func() {
-		closeLocalChannel(open.ChannelID)
-		// No CHANNEL_CLOSE for UDP — Station cleans up by timeout
-	}()
+	defer closeLocalChannel(open.ChannelID)
 
-	// Read response packets from local UDP service and forward back to Station
 	buf := make([]byte, 65535)
 	for {
-		// Reset deadline on each packet (60s UDP session timeout)
 		conn.SetDeadline(time.Now().Add(60 * time.Second))
 		n, err := conn.Read(buf)
 		if n > 0 {
@@ -991,8 +1085,6 @@ func handleLocalUDPChannel(open protocol.ChannelOpenMsg, writer *protocol.Writer
 		}
 	}
 }
-
-// ── Shared helpers ────────────────────────────────────────────────────────────
 
 func findTunnel(id string) *protocol.TunnelConfig {
 	for i := range edgeTunnels {
