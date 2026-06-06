@@ -112,6 +112,8 @@ func main() {
 		runRemove()
 	case "version", "--version", "-v":
 		fmt.Printf("reno %s\n", version)
+	case "update":
+		runUpdate()
 	case "config":
 		runConfig()
 	// Internal subcommands used by the OS service manager — not shown in help
@@ -132,8 +134,74 @@ func printUsage() {
 	fmt.Println("  reno edge      Start Edge in background (auto-start on boot)")
 	fmt.Println("  reno down      Stop both Station and Edge")
 	fmt.Println("  reno remove    Uninstall services and binary")
+	fmt.Println("  reno update    Update to the latest version")
 	fmt.Println("  reno version   Show version")
 	fmt.Println("  reno config    Edit configuration")
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+
+func runUpdate() {
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Fatalf("get executable path: %v", err)
+	}
+	exePath, _ = filepath.Abs(exePath)
+
+	binaryName := fmt.Sprintf("reno-%s-%s", runtime.GOOS, runtime.GOARCH)
+	downloadURL := "https://github.com/kiiimatz/reno/releases/latest/download/" + binaryName
+
+	fmt.Printf("Current version: %s\n", version)
+	fmt.Printf("Downloading %s...\n", downloadURL)
+
+	resp, err := http.Get(downloadURL)
+	if err != nil {
+		log.Fatalf("download: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		log.Fatalf("download failed: HTTP %d", resp.StatusCode)
+	}
+
+	tmpPath := exePath + ".new"
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		log.Fatalf("create temp file: %v\nTry running with sudo.", err)
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		log.Fatalf("write: %v", err)
+	}
+	f.Close()
+
+	if err := os.Rename(tmpPath, exePath); err != nil {
+		os.Remove(tmpPath)
+		log.Fatalf("replace binary: %v\nTry running with sudo.", err)
+	}
+
+	fmt.Println("Binary updated.")
+
+	// Restart running services
+	switch runtime.GOOS {
+	case "linux":
+		run("systemctl", "restart", "reno-station")
+		run("systemctl", "restart", "reno-edge")
+	case "darwin":
+		stationPlist := "/Library/LaunchDaemons/com.kiiimatz.reno-station.plist"
+		edgePlist := "/Library/LaunchDaemons/com.kiiimatz.reno-edge.plist"
+		run("launchctl", "unload", stationPlist)
+		run("launchctl", "load", stationPlist)
+		run("launchctl", "unload", edgePlist)
+		run("launchctl", "load", edgePlist)
+	case "windows":
+		run("schtasks", "/End", "/TN", "RenoStation")
+		run("schtasks", "/End", "/TN", "RenoEdge")
+		run("schtasks", "/Run", "/TN", "RenoStation")
+		run("schtasks", "/Run", "/TN", "RenoEdge")
+	}
+
+	fmt.Println("Services restarted.")
 }
 
 // ─── Service management ───────────────────────────────────────────────────────
