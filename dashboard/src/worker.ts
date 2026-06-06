@@ -578,11 +578,17 @@ function renderTunnels() {
       '<div class="tunnel-right">' +
         '<span class="badge">' + esc(t.protocol) + '</span>' +
         '<span class="' + statusClass + '">' + esc(t.status) + '</span>' +
-        '<button class="delete-btn" onclick="deleteTunnel(\'' + esc(t.id) + '\')">&#x2715;</button>' +
+        '<button class="delete-btn" data-id="' + esc(t.id) + '">&#x2715;</button>' +
       '</div>' +
     '</div>';
   }).join('');
 }
+
+// Event delegation for delete buttons — avoids inline onclick quoting issues
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.delete-btn');
+  if (btn) deleteTunnel(btn.dataset.id);
+});
 
 async function createTunnel() {
   const stationId = document.getElementById('form-station').value;
@@ -637,6 +643,11 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+
+    // Favicon — no auth needed
+    if (method === 'GET' && path === '/favicon.ico') {
+      return new Response(null, { status: 204 });
+    }
 
     // Serve dashboard
     if (method === 'GET' && path === '/') {
