@@ -63,10 +63,14 @@ func configPath() string {
 }
 
 func loadConfig() Config {
+	// os.Args[2] can be an explicit config path (used when running as a service)
 	path := configPath()
+	if len(os.Args) > 2 && os.Args[2] != "" {
+		path = os.Args[2]
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Config not found. Run 'reno config' to set up.\n")
+		fmt.Fprintf(os.Stderr, "Config not found at %s. Run 'reno config' to set up.\n", path)
 		os.Exit(1)
 	}
 	var cfg Config
@@ -121,13 +125,17 @@ func installAndStart(component string) {
 	}
 	exePath, _ = filepath.Abs(exePath)
 
+	// Capture config path NOW (as the current user) so the service
+	// can find it even when running as root/SYSTEM later.
+	cfgPath, _ := filepath.Abs(configPath())
+
 	switch runtime.GOOS {
 	case "linux":
-		installSystemd(component, exePath)
+		installSystemd(component, exePath, cfgPath)
 	case "darwin":
-		installLaunchd(component, exePath)
+		installLaunchd(component, exePath, cfgPath)
 	case "windows":
-		installWinTask(component, exePath)
+		installWinTask(component, exePath, cfgPath)
 	default:
 		log.Fatalf("unsupported OS: %s", runtime.GOOS)
 	}
@@ -156,7 +164,7 @@ func runDown() {
 
 // ── Linux systemd ─────────────────────────────────────────────────────────────
 
-func installSystemd(component, exePath string) {
+func installSystemd(component, exePath, cfgPath string) {
 	svcName := "reno-" + component
 	unit := fmt.Sprintf(`[Unit]
 Description=Reno %s
@@ -164,13 +172,13 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=%s %s-daemon
+ExecStart=%s %s-daemon %s
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-`, strings.Title(component), exePath, component)
+`, strings.Title(component), exePath, component, cfgPath)
 
 	path := "/etc/systemd/system/" + svcName + ".service"
 	if err := os.WriteFile(path, []byte(unit), 0644); err != nil {
@@ -183,7 +191,7 @@ WantedBy=multi-user.target
 
 // ── macOS launchd ─────────────────────────────────────────────────────────────
 
-func installLaunchd(component, exePath string) {
+func installLaunchd(component, exePath, cfgPath string) {
 	label := "com.kiiimatz.reno-" + component
 	logPath := "/var/log/reno-" + component + ".log"
 	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -196,6 +204,7 @@ func installLaunchd(component, exePath string) {
 	<array>
 		<string>%s</string>
 		<string>%s-daemon</string>
+		<string>%s</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
@@ -207,28 +216,26 @@ func installLaunchd(component, exePath string) {
 	<string>%s</string>
 </dict>
 </plist>
-`, label, exePath, component, logPath, logPath)
+`, label, exePath, component, cfgPath, logPath, logPath)
 
 	plistPath := "/Library/LaunchDaemons/" + label + ".plist"
 	if err := os.WriteFile(plistPath, []byte(plist), 0644); err != nil {
 		log.Fatalf("write plist: %v\nTry running with sudo.", err)
 	}
-	// Unload first in case it was already loaded
 	exec.Command("launchctl", "unload", plistPath).Run()
 	run("launchctl", "load", plistPath)
 }
 
 // ── Windows Task Scheduler ────────────────────────────────────────────────────
 
-func installWinTask(component, exePath string) {
+func installWinTask(component, exePath, cfgPath string) {
 	taskName := "Reno" + strings.Title(component)
-	logPath := filepath.Join(os.Getenv("APPDATA"), "reno", component+".log")
+	logPath := filepath.Join(filepath.Dir(cfgPath), component+".log")
 	os.MkdirAll(filepath.Dir(logPath), 0700)
 
-	// Delete existing task if any, then create fresh
 	exec.Command("schtasks", "/Delete", "/F", "/TN", taskName).Run()
 
-	cmd := fmt.Sprintf(`%s %s-daemon >> "%s" 2>&1`, exePath, component, logPath)
+	cmd := fmt.Sprintf(`"%s" %s-daemon "%s"`, exePath, component, cfgPath)
 	run("schtasks", "/Create", "/F",
 		"/TN", taskName,
 		"/TR", cmd,
