@@ -707,12 +707,12 @@ document.addEventListener('click', function(e) {
 });
 
 async function createTunnel() {
-  const edgeId    = document.getElementById('form-edge').value;
-  const stationId = document.getElementById('form-station').value;
-  const protocol  = document.getElementById('form-protocol').value;
-  const localHost = document.getElementById('form-ip').value;
-  const localPort = parseInt(document.getElementById('form-port').value);
-  const name      = document.getElementById('form-name').value;
+  const edgeId     = document.getElementById('form-edge').value;
+  const stationId  = document.getElementById('form-station').value;
+  const protocol   = document.getElementById('form-protocol').value;
+  const localHost  = document.getElementById('form-ip').value;
+  const localPort  = parseInt(document.getElementById('form-port').value);
+  const name       = document.getElementById('form-name').value;
   const remotePort = parseInt(document.getElementById('form-remote-port').value);
 
   if (!edgeId || !stationId || !localPort || !name || !remotePort) {
@@ -726,26 +726,33 @@ async function createTunnel() {
     body: JSON.stringify({ edge_id: edgeId, station_id: stationId, protocol, local_host: localHost, local_port: localPort, name, remote_port: remotePort })
   });
   if (res.ok) {
+    const data = await res.json();
+    tunnels.push(data.tunnel);
     document.getElementById('form-port').value = '';
     document.getElementById('form-name').value = '';
     document.getElementById('form-remote-port').value = '';
-    await refresh();
+    renderTunnels();
   }
 }
 
 async function deleteTunnel(id) {
-  await fetch('/api/tunnels/' + id, { method: 'DELETE' });
-  await refresh();
+  tunnels = tunnels.filter(t => t.id !== id);
+  renderTunnels();
+  fetch('/api/tunnels/' + id, { method: 'DELETE' });
 }
 
 async function deleteEdge(id) {
-  await fetch('/api/edges/' + id, { method: 'DELETE' });
-  await refresh();
+  edges = edges.filter(e => e.id !== id);
+  renderEdges();
+  renderEdgeSelect();
+  fetch('/api/edges/' + id, { method: 'DELETE' });
 }
 
 async function deleteStation(id) {
-  await fetch('/api/stations/' + id, { method: 'DELETE' });
-  await refresh();
+  stations = stations.filter(s => s.id !== id);
+  renderStations();
+  renderStationSelect();
+  fetch('/api/stations/' + id, { method: 'DELETE' });
 }
 
 function toggleTheme() {
@@ -838,7 +845,7 @@ export default {
       };
 
       await sendState();
-      const timer = setInterval(sendState, 2000);
+      const timer = setInterval(sendState, 1000);
       server.addEventListener('close', () => clearInterval(timer));
 
       return new Response(null, { status: 101, webSocket: client } as ResponseInit);

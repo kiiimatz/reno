@@ -849,7 +849,7 @@ func cleanupUDPSessions() {
 
 func pollTunnels(cfg Config) {
 	for {
-		time.Sleep(10 * time.Second)
+		time.Sleep(3 * time.Second)
 		if stationID == "" {
 			continue
 		}
@@ -1055,7 +1055,7 @@ func runEdgeDaemon() {
 		if err := edgeRun(cfg, stationRef); err != nil {
 			log.Printf("Disconnected: %v. Reconnecting in %s...", err, backoff)
 			time.Sleep(backoff)
-			if backoff < 60*time.Second {
+			if backoff < 5*time.Second {
 				backoff *= 2
 			}
 		} else {
