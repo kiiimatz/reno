@@ -46,8 +46,10 @@ type TunnelConfig struct {
 }
 
 // IsUDP returns true when the tunnel uses UDP transport.
+// QUIC runs over UDP, everything else (TCP, HTTP, HTTPS) uses TCP.
 func (t TunnelConfig) IsUDP() bool {
-	return strings.EqualFold(t.Protocol, "UDP")
+	p := strings.ToUpper(t.Protocol)
+	return p == "UDP" || p == "QUIC"
 }
 
 type TunnelSyncMsg struct {
