@@ -12,7 +12,8 @@
       "Bash(wrangler whoami:*)",
       "Bash(go version:*)",
       "Bash(wrangler kv:*)",
-      "Bash(wrangler deploy:*)"
+      "Bash(wrangler deploy:*)",
+      "Bash(git tag:*)"
     ]
   }
 }

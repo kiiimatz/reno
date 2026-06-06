@@ -14,20 +14,16 @@ PLATFORMS = \
 all: build
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o dist/reno-station ./cmd/station
-	go build -ldflags "$(LDFLAGS)" -o dist/reno-edge   ./cmd/edge
+	go build -ldflags "$(LDFLAGS)" -o dist/reno ./cmd/reno
 
 release:
 	mkdir -p dist
 	@for platform in $(PLATFORMS); do \
 		GOOS=$${platform%/*} GOARCH=$${platform#*/} ; \
 		ext="" ; [ "$$GOOS" = "windows" ] && ext=".exe" ; \
-		echo "Building reno-station $$GOOS/$$GOARCH..." ; \
+		echo "Building reno $$GOOS/$$GOARCH..." ; \
 		GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "$(LDFLAGS)" \
-			-o dist/reno-station-$$GOOS-$$GOARCH$$ext ./cmd/station ; \
-		echo "Building reno-edge $$GOOS/$$GOARCH..." ; \
-		GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "$(LDFLAGS)" \
-			-o dist/reno-edge-$$GOOS-$$GOARCH$$ext ./cmd/edge ; \
+			-o dist/reno-$$GOOS-$$GOARCH$$ext ./cmd/reno ; \
 	done
 
 clean:

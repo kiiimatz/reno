@@ -21,39 +21,24 @@ case "$ARCH" in
   *)             echo "Unsupported arch: $ARCH"; exit 1 ;;
 esac
 
-# which component to install
-COMPONENT="${1:-}"
-if [ -z "$COMPONENT" ]; then
-  echo "Usage: install.sh [station|edge|both]"
-  echo "  station  - install reno-station"
-  echo "  edge     - install reno-edge"
-  echo "  both     - install both"
-  exit 1
+BINARY="reno-${OS}-${ARCH}"
+DEST="${INSTALL_DIR}/reno"
+
+echo "Downloading reno (${OS}/${ARCH})..."
+
+if command -v curl &>/dev/null; then
+  curl -fsSL "${BASE_URL}/${BINARY}" -o "$DEST"
+elif command -v wget &>/dev/null; then
+  wget -q "${BASE_URL}/${BINARY}" -O "$DEST"
+else
+  echo "curl or wget is required"; exit 1
 fi
 
-install_binary() {
-  local name="$1"
-  local url="${BASE_URL}/${name}-${OS}-${ARCH}"
-  local dest="${INSTALL_DIR}/${name}"
+chmod +x "$DEST"
 
-  echo "Downloading ${name} (${OS}/${ARCH})..."
-  if command -v curl &>/dev/null; then
-    curl -fsSL "$url" -o "$dest"
-  elif command -v wget &>/dev/null; then
-    wget -q "$url" -O "$dest"
-  else
-    echo "curl or wget is required"; exit 1
-  fi
-  chmod +x "$dest"
-  echo "Installed: $dest"
-}
-
-if [ "$COMPONENT" = "station" ] || [ "$COMPONENT" = "both" ]; then
-  install_binary reno-station
-fi
-if [ "$COMPONENT" = "edge" ] || [ "$COMPONENT" = "both" ]; then
-  install_binary reno-edge
-fi
-
+echo "Installed: $DEST"
 echo ""
-echo "Done! Run 'reno-station --help' or 'reno-edge --help' to get started."
+echo "Usage:"
+echo "  reno config    # set up config (~/.config/reno/config.json)"
+echo "  reno station   # start Station server"
+echo "  reno edge      # start Edge client"
