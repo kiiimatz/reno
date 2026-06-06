@@ -20,7 +20,7 @@ interface Tunnel {
   id: string;
   stationId: string;
   name: string;
-  protocol: 'TCP' | 'UDP' | 'HTTP' | 'HTTPS';
+  protocol: 'TCP' | 'UDP';
   localHost: string;
   localPort: number;
   remotePort: number;
@@ -453,8 +453,6 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         <label>Protocol</label>
         <select id="form-protocol">
           <option>TCP</option>
-          <option>HTTP</option>
-          <option>HTTPS</option>
           <option>UDP</option>
         </select>
       </div>
@@ -792,7 +790,7 @@ export default {
     // POST /api/tunnels
     if (path === '/api/tunnels' && method === 'POST') {
       const body = await request.json() as {
-        station_id: string; name: string; protocol: 'TCP' | 'UDP' | 'HTTP' | 'HTTPS';
+        station_id: string; name: string; protocol: 'TCP' | 'UDP';
         local_host: string; local_port: number; remote_port: number;
       };
       const tunnel: Tunnel = {

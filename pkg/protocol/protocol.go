@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -44,14 +45,9 @@ type TunnelConfig struct {
 	Protocol   string `json:"protocol"`
 }
 
-// IsUDP returns true for protocols that need UDP transport.
-// Everything else (TCP, HTTP, HTTPS, SSH, MySQL, Redis, …) uses TCP.
+// IsUDP returns true when the tunnel uses UDP transport.
 func (t TunnelConfig) IsUDP() bool {
-	switch t.Protocol {
-	case "UDP", "udp", "DNS", "dns", "WireGuard", "wireguard", "QUIC", "quic":
-		return true
-	}
-	return false
+	return strings.EqualFold(t.Protocol, "UDP")
 }
 
 type TunnelSyncMsg struct {
