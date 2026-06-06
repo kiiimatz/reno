@@ -4,5 +4,5 @@ compatibility_date = "2024-05-29"
 
 [[kv_namespaces]]
 binding = "RENO_KV"
-id = "REPLACE_WITH_KV_ID"
-preview_id = "REPLACE_WITH_KV_PREVIEW_ID"
+id = "7030dc62349a4e0c954690b1af4c976d"
+preview_id = "212c0b51b3144df38035b818677e9b3c"

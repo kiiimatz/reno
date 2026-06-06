@@ -8,7 +8,11 @@
       "Bash(git remote:*)",
       "Bash(go build:*)",
       "Bash(git push:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(wrangler whoami:*)",
+      "Bash(go version:*)",
+      "Bash(wrangler kv:*)",
+      "Bash(wrangler deploy:*)"
     ]
   }
 }
