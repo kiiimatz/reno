@@ -2,7 +2,8 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -34,7 +35,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
-          go build -ldflags="-s -w -X main.version=$(git describe --tags --always --dirty)" \
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
             -o reno-${{ matrix.goos }}-${{ matrix.goarch }} \
             ./cmd/reno
 
@@ -51,17 +52,11 @@ jobs:
         with:
           merge-multiple: true
 
-      - name: Delete existing latest release
-        run: gh release delete latest --yes --repo ${{ github.repository }} || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create latest release
+      - name: Create release
         run: |
-          gh release create latest \
+          gh release create ${{ github.ref_name }} \
             --repo ${{ github.repository }} \
-            --title "latest" \
-            --notes "Auto-built from main branch ($(date -u +%Y-%m-%dT%H:%M:%SZ))" \
+            --title "${{ github.ref_name }}" \
             reno-linux-amd64 \
             reno-linux-arm64 \
             reno-darwin-amd64 \
