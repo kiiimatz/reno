@@ -5,7 +5,10 @@
       "Bash(git config:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(go build:*)",
+      "Bash(git push:*)",
+      "Bash(git branch:*)"
     ]
   }
 }
