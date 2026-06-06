@@ -2,29 +2,69 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.22'
 
-      - name: Build all platforms
-        run: make release
+      - name: Build
         env:
-          VERSION: ${{ github.ref_name }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          go build -ldflags="-s -w -X main.version=$(git describe --tags --always --dirty)" \
+            -o reno-${{ matrix.goos }}-${{ matrix.goarch }} \
+            ./cmd/reno
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          files: dist/reno-*
-          generate_release_notes: true
+          name: reno-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: reno-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Delete existing latest release
+        run: gh release delete latest --yes --repo ${{ github.repository }} || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create latest release
+        run: |
+          gh release create latest \
+            --repo ${{ github.repository }} \
+            --title "latest" \
+            --notes "Auto-built from main branch ($(date -u +%Y-%m-%dT%H:%M:%SZ))" \
+            reno-linux-amd64 \
+            reno-linux-arm64 \
+            reno-darwin-amd64 \
+            reno-darwin-arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
