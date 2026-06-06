@@ -1,0 +1,5 @@
+{
+  "station_id": "STATION_ID_FROM_DASHBOARD",
+  "dashboard_url": "https://station.kiiimatz.com",
+  "api_secret": "your-shared-secret-here"
+}

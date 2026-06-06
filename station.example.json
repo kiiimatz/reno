@@ -1,0 +1,6 @@
+{
+  "name": "my-station",
+  "dashboard_url": "https://station.kiiimatz.com",
+  "api_secret": "your-shared-secret-here",
+  "control_port": 7000
+}

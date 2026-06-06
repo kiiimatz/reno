@@ -1,0 +1,21 @@
+# TLS certificates (auto-generated)
+tls.crt
+tls.key
+
+# Config files with secrets
+station.json
+edge.json
+.env
+.dev.vars
+
+# Build output
+dist/
+*.exe
+
+# Node/Bun
+node_modules/
+.wrangler/
+
+# OS
+.DS_Store
+Thumbs.db
