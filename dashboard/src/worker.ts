@@ -352,48 +352,24 @@ html, body {
   text-transform: uppercase;
 }
 
-/* ── Drag & drop cards ── */
-#cards-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-#cards-container > .card {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.drag-handle {
-  width: 14px; height: 14px;
-  color: var(--text-muted);
-  opacity: 0;
-  cursor: grab;
-  flex-shrink: 0;
-  transition: opacity 0.15s;
-  touch-action: none;
-}
-.card:hover .drag-handle { opacity: 0.45; }
-.drag-handle:hover { opacity: 0.8 !important; }
-/* Ghost: the transparent placeholder left behind while dragging */
-.card-ghost {
-  border-radius: var(--radius-lg);
-  background: rgba(255,255,255,0.04);
-  border: 1.5px dashed var(--border);
-  pointer-events: none;
-  transition: height 0.18s ease;
-}
-/* Flying clone that follows the cursor */
-.card-flying {
+/* ── Item drag & drop ── */
+.item-flying {
   position: fixed;
   z-index: 9999;
   pointer-events: none;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.3);
-  opacity: 0.92;
-  transform: rotate(1.5deg) scale(1.02);
-  transition: box-shadow 0.15s;
-  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.25);
+  opacity: 0.95;
+  border-radius: 6px;
+  background: var(--bg-primary);
+  transform: scale(1.02);
 }
-/* Drop target highlight */
-.card-drop-above { box-shadow: 0 -3px 0 0 var(--accent); }
-.card-drop-below { box-shadow: 0 3px 0 0 var(--accent); }
+.item-ghost {
+  border: 1.5px dashed var(--border);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.025);
+  pointer-events: none;
+  box-sizing: border-box;
+}
 
 /* ── Nodes collapsible card ── */
 .nodes-card { overflow: hidden; }
@@ -450,7 +426,9 @@ html, body {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 0;
   border-bottom: 1px solid var(--border);
+  cursor: grab;
 }
+.node-row:active { cursor: grabbing; }
 .node-row:last-child { border-bottom: none; }
 
 .node-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
@@ -643,7 +621,9 @@ html, body {
   padding: 12px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
   transition: background 0.15s;
+  cursor: grab;
 }
+.tunnel-item:active { cursor: grabbing; }
 .tunnel-item:last-child { border-bottom: none; }
 .tunnel-item:hover { background: rgba(255,255,255,0.03); }
 
@@ -807,14 +787,7 @@ html, body {
 
     <div id="card-nodes" class="card nodes-card">
       <div class="nodes-header" onclick="toggleNodes()">
-        <div style="display:flex;align-items:center;gap:8px">
-          <svg class="drag-handle" data-drag-handle viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="9" cy="6" r="1.5" fill="currentColor"/><circle cx="15" cy="6" r="1.5" fill="currentColor"/>
-            <circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/>
-            <circle cx="9" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/>
-          </svg>
-          <span class="section-label">Edges &amp; Stations</span>
-        </div>
+        <span class="section-label">Edges &amp; Stations</span>
         <svg class="nodes-arrow" id="nodes-arrow" viewBox="0 0 24 24" aria-hidden="true">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
@@ -835,14 +808,7 @@ html, body {
 
     <div id="card-tunnels" class="card list-card">
       <div class="list-header" style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <svg class="drag-handle" data-drag-handle viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="9" cy="6" r="1.5" fill="currentColor"/><circle cx="15" cy="6" r="1.5" fill="currentColor"/>
-            <circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/>
-            <circle cx="9" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/>
-          </svg>
-          <span>Tunnels</span>
-        </div>
+        <span>Tunnels</span>
         <button class="modal-close add-btn" onclick="openCreate()" aria-label="Create tunnel">
           <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
@@ -943,120 +909,110 @@ function showLogin() {
 function showApp() {
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'flex';
-  restoreCardOrder();
-  initCardDrag();
 }
 
-/* ── Trello-style card drag ── */
-function restoreCardOrder() {
-  try {
-    const order = JSON.parse(localStorage.getItem('card-order') || '[]');
-    if (!order.length) return;
-    const container = document.getElementById('cards-container');
-    order.forEach(function(id) {
-      const el = document.getElementById(id);
-      if (el) container.appendChild(el);
-    });
-  } catch(e) {}
+/* ── Item drag-to-reorder (Trello style) ── */
+let tunnelOrder   = [];
+let edgeOrder     = [];
+let stationOrder  = [];
+(function loadOrders() {
+  try { tunnelOrder  = JSON.parse(localStorage.getItem('tunnel-order')  || '[]'); } catch(e) {}
+  try { edgeOrder    = JSON.parse(localStorage.getItem('edge-order')    || '[]'); } catch(e) {}
+  try { stationOrder = JSON.parse(localStorage.getItem('station-order') || '[]'); } catch(e) {}
+})();
+
+function applyOrder(arr, order) {
+  if (!order.length) return arr.slice();
+  const out = order.map(function(id) { return arr.find(function(x) { return x.id === id; }); }).filter(Boolean);
+  arr.forEach(function(x) { if (!order.includes(x.id)) out.push(x); });
+  return out;
 }
 
-function saveCardOrder() {
-  const container = document.getElementById('cards-container');
-  const ids = Array.from(container.children)
-    .filter(function(el) { return el.id && el.classList.contains('card'); })
-    .map(function(el) { return el.id; });
-  localStorage.setItem('card-order', JSON.stringify(ids));
-}
+// Makes children of listEl sortable by pointer drag.
+// idAttr: data attribute on each item holding its id.
+// orderArr/orderKey: the persistent order array and its localStorage key.
+function makeSortable(listEl, idAttr, orderArr, orderKey) {
+  listEl.addEventListener('pointerdown', function startDrag(e) {
+    const item = e.target.closest('[' + idAttr + ']');
+    if (!item || item.parentNode !== listEl) return;
+    // Don't drag when clicking buttons or toggle badges
+    if (e.target.closest('button') || e.target.closest('.t-badge')) return;
 
-function initCardDrag() {
-  const container = document.getElementById('cards-container');
-  let dragEl = null;   // real card (removed from flow during drag)
-  let flyEl  = null;   // fixed clone following cursor
-  let ghostEl = null;  // dashed placeholder in the list
+    const startX = e.clientX, startY = e.clientY;
+    let started = false;
+    let flyEl = null, ghostEl = null;
+    let offX, offY, w, h;
 
-  // Capture pointer on body so moves outside container still register
-  document.addEventListener('pointerdown', onDown);
+    function onMove(ev) {
+      if (!started) {
+        if (Math.abs(ev.clientX - startX) < 5 && Math.abs(ev.clientY - startY) < 5) return;
+        started = true;
+        const rect = item.getBoundingClientRect();
+        w = rect.width; h = rect.height;
+        offX = startX - rect.left; offY = startY - rect.top;
 
-  function onDown(e) {
-    const handle = e.target.closest('[data-drag-handle]');
-    if (!handle) return;
-    const card = handle.closest('.card');
-    if (!card || card.parentNode !== container) return;
+        // Ghost placeholder
+        ghostEl = document.createElement('div');
+        ghostEl.className = 'item-ghost';
+        ghostEl.style.height = h + 'px';
+        ghostEl.style.width  = w + 'px';
+        listEl.insertBefore(ghostEl, item);
+        item.remove();
 
-    e.preventDefault();
-
-    const rect = card.getBoundingClientRect();
-    const offX = e.clientX - rect.left;
-    const offY = e.clientY - rect.top;
-    const w = rect.width;
-    const h = rect.height;
-
-    dragEl = card;
-
-    // Ghost placeholder (stays in DOM flow so other cards animate into place)
-    ghostEl = document.createElement('div');
-    ghostEl.className = 'card-ghost';
-    ghostEl.style.height = h + 'px';
-    container.insertBefore(ghostEl, card);
-    card.remove(); // take card out of flow; ghost holds its space
-
-    // Flying clone
-    flyEl = card.cloneNode(true);
-    flyEl.className = card.className + ' card-flying';
-    flyEl.style.width  = w + 'px';
-    flyEl.style.left   = (e.clientX - offX) + 'px';
-    flyEl.style.top    = (e.clientY - offY) + 'px';
-    document.body.appendChild(flyEl);
-
-    function onMove(e) {
-      flyEl.style.left = (e.clientX - offX) + 'px';
-      flyEl.style.top  = (e.clientY - offY) + 'px';
-
-      // Reposition ghost: find the slot whose midpoint the cursor has crossed
-      const siblings = Array.from(container.children).filter(function(el) {
-        return el !== ghostEl;
-      });
-      let insertBefore = null;
-      for (let i = 0; i < siblings.length; i++) {
-        const r = siblings[i].getBoundingClientRect();
-        if (e.clientY < r.top + r.height / 2) { insertBefore = siblings[i]; break; }
+        // Flying clone
+        flyEl = item.cloneNode(true);
+        flyEl.classList.add('item-flying');
+        flyEl.style.width = w + 'px';
+        flyEl.style.left  = (ev.clientX - offX) + 'px';
+        flyEl.style.top   = (ev.clientY - offY) + 'px';
+        document.body.appendChild(flyEl);
       }
-      if (insertBefore) container.insertBefore(ghostEl, insertBefore);
-      else container.appendChild(ghostEl);
+
+      flyEl.style.left = (ev.clientX - offX) + 'px';
+      flyEl.style.top  = (ev.clientY - offY) + 'px';
+
+      // Move ghost to right slot
+      const sibs = Array.from(listEl.children).filter(function(el) { return el !== ghostEl; });
+      let before = null;
+      for (let i = 0; i < sibs.length; i++) {
+        const r = sibs[i].getBoundingClientRect();
+        if (ev.clientY < r.top + r.height / 2) { before = sibs[i]; break; }
+      }
+      if (before) listEl.insertBefore(ghostEl, before);
+      else listEl.appendChild(ghostEl);
     }
 
     function onUp() {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup',   onUp);
       document.removeEventListener('pointercancel', onUp);
+      if (!started) return;
 
-      // Drop: put real card where ghost is, then remove ghost + clone
-      container.insertBefore(dragEl, ghostEl);
+      listEl.insertBefore(item, ghostEl);
       ghostEl.remove();
       flyEl.remove();
 
-      // Landing pop animation
-      dragEl.style.transition = 'transform 0.2s cubic-bezier(.22,1,.36,1), box-shadow 0.2s ease';
-      dragEl.style.transform = 'scale(1.015)';
-      dragEl.style.boxShadow = '0 6px 20px rgba(0,0,0,0.22)';
-      requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-          dragEl.style.transform = '';
-          dragEl.style.boxShadow = '';
-          setTimeout(function() {
-            if (dragEl) { dragEl.style.transition = ''; }
-            dragEl = null; flyEl = null; ghostEl = null;
-          }, 200);
-        });
-      });
+      // Landing pop
+      item.style.transition = 'transform 0.18s cubic-bezier(.22,1,.36,1)';
+      item.style.transform = 'scale(1.015)';
+      requestAnimationFrame(function() { requestAnimationFrame(function() {
+        item.style.transform = '';
+        setTimeout(function() { item.style.transition = ''; }, 180);
+      }); });
 
-      saveCardOrder();
+      // Persist new order
+      const newOrder = Array.from(listEl.querySelectorAll('[' + idAttr + ']')).map(function(el) {
+        return el.getAttribute(idAttr);
+      });
+      orderArr.length = 0;
+      newOrder.forEach(function(id) { orderArr.push(id); });
+      localStorage.setItem(orderKey, JSON.stringify(newOrder));
     }
 
     document.addEventListener('pointermove',   onMove);
     document.addEventListener('pointerup',     onUp);
     document.addEventListener('pointercancel', onUp);
-  }
+  });
 }
 
 function connectWS() {
@@ -1115,30 +1071,34 @@ const DEL_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6
 
 function renderEdges() {
   const el = document.getElementById('edge-list');
-  if (!edges.length) { el.innerHTML = '<div class="empty-sm">No edges</div>'; return; }
-  el.innerHTML = edges.map(function(e) {
+  const sorted = applyOrder(edges, edgeOrder);
+  if (!sorted.length) { el.innerHTML = '<div class="empty-sm">No edges</div>'; return; }
+  el.innerHTML = sorted.map(function(e) {
     const cls = e.status === 'online' ? 'online' : 'offline';
-    return '<div class="node-row">' +
+    return '<div class="node-row" data-edge-sort-id="' + esc(e.id) + '">' +
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(e.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + e.status + '</span>' +
       '<button class="t-del" data-edge-id="' + esc(e.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
+  makeSortable(el, 'data-edge-sort-id', edgeOrder, 'edge-order');
 }
 
 function renderStations() {
   const el = document.getElementById('station-list');
-  if (!stations.length) { el.innerHTML = '<div class="empty-sm">No stations</div>'; return; }
-  el.innerHTML = stations.map(function(s) {
+  const sorted = applyOrder(stations, stationOrder);
+  if (!sorted.length) { el.innerHTML = '<div class="empty-sm">No stations</div>'; return; }
+  el.innerHTML = sorted.map(function(s) {
     const cls = s.status === 'online' ? 'online' : 'offline';
-    return '<div class="node-row">' +
+    return '<div class="node-row" data-station-sort-id="' + esc(s.id) + '">' +
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(s.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + s.status + '</span>' +
       '<button class="t-del" data-station-id="' + esc(s.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
+  makeSortable(el, 'data-station-sort-id', stationOrder, 'station-order');
 }
 
 function renderEdgeSelect() {
@@ -1169,11 +1129,12 @@ function renderStationSelect() {
 
 function renderTunnels() {
   const list = document.getElementById('tunnel-list');
-  if (!tunnels.length) {
+  const sorted = applyOrder(tunnels, tunnelOrder);
+  if (!sorted.length) {
     list.innerHTML = '<div class="empty"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="5" y1="19" x2="19" y2="19"/></svg>no tunnels yet</div>';
     return;
   }
-  list.innerHTML = tunnels.map(function(t) {
+  list.innerHTML = sorted.map(function(t) {
     const edge    = edges.find(function(e)   { return e.id === t.edge_id; });
     const station = stations.find(function(s) { return s.id === t.station_id; });
     const edgeOnline    = edge    && edge.status    === 'online';
@@ -1183,7 +1144,7 @@ function renderTunnels() {
     const badgeTxt = !enabled ? 'off' : (edgeOnline && stationOnline) ? 'active' : 'idle';
     const edgeName    = edge    ? esc(edge.name)    : '?';
     const stationName = station ? esc(station.name) : '?';
-    return '<div class="tunnel-item">' +
+    return '<div class="tunnel-item" data-tunnel-sort-id="' + esc(t.id) + '">' +
       '<div>' +
         '<div class="t-name-row">' +
           '<span class="t-name">' + esc(t.name) + '</span>' +
@@ -1196,6 +1157,7 @@ function renderTunnels() {
       '<button class="t-del" data-tunnel-id="' + esc(t.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
+  makeSortable(list, 'data-tunnel-sort-id', tunnelOrder, 'tunnel-order');
 }
 
 document.addEventListener('click', function(e) {
