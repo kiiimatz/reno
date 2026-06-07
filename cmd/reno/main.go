@@ -438,15 +438,17 @@ func runConfig() {
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
+		hostname, _ := os.Hostname()
 		def := Config{
-			DashboardURL: "https://reno-dashboard.hideko332200.workers.dev",
+			DashboardURL: "",
 			APISecret:    "",
 			Station: StationConfig{
-				Name:        "my-station",
+				Name:        hostname,
 				ControlPort: 7000,
 				Address:     "", // optional: custom hostname shown in dashboard (e.g. "example.com")
 			},
 			Edge: EdgeConfig{
+				Name: hostname,
 				// Empty = auto-connect to first station on dashboard
 				StationID: "",
 			},
