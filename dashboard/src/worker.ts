@@ -252,6 +252,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   --radius-lg:  10px;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
 html, body {
   height: 100%;
   font-family: var(--font-sans);
