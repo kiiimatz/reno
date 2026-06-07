@@ -477,6 +477,8 @@ html, body {
   flex-shrink: 0;
 }
 .modal-close:hover { background: var(--danger-bg); color: var(--danger-text); border-color: transparent; }
+.add-btn { background: transparent !important; border-color: transparent !important; }
+.add-btn:hover { background: var(--del-bg) !important; border-color: var(--del-border) !important; color: var(--del-text) !important; }
 .modal-close svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
 
 /* ── Create form (inside modal) ── */
@@ -782,7 +784,7 @@ html, body {
     <div class="card list-card">
       <div class="list-header" style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px">
         <span>Tunnels</span>
-        <button class="modal-close" onclick="openCreate()" aria-label="Create tunnel" style="background:var(--del-bg);border-color:var(--del-border)">
+        <button class="modal-close add-btn" onclick="openCreate()" aria-label="Create tunnel">
           <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
