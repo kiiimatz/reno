@@ -118,7 +118,7 @@ async function jwtVerify(token: string, secret: string): Promise<object | null> 
 // --- KV helpers ---
 
 async function getEdges(kv: KVNamespace): Promise<Edge[]> {
-  const data = await kv.get('edges');
+  const data = await kv.get('edges', { cacheTtl: 0 });
   return data ? JSON.parse(data) : [];
 }
 
@@ -127,7 +127,7 @@ async function saveEdges(kv: KVNamespace, edges: Edge[]): Promise<void> {
 }
 
 async function getStations(kv: KVNamespace): Promise<Station[]> {
-  const data = await kv.get('stations');
+  const data = await kv.get('stations', { cacheTtl: 0 });
   return data ? JSON.parse(data) : [];
 }
 
@@ -136,7 +136,7 @@ async function saveStations(kv: KVNamespace, stations: Station[]): Promise<void>
 }
 
 async function getTunnels(kv: KVNamespace): Promise<Tunnel[]> {
-  const data = await kv.get('tunnels');
+  const data = await kv.get('tunnels', { cacheTtl: 0 });
   return data ? JSON.parse(data) : [];
 }
 
@@ -1003,7 +1003,7 @@ export default {
       };
 
       await sendState();
-      const timer = setInterval(sendState, 500);
+      const timer = setInterval(sendState, 1000);
       server.addEventListener('close', () => clearInterval(timer));
 
       return new Response(null, { status: 101, webSocket: client } as ResponseInit);
@@ -1188,7 +1188,7 @@ export default {
       const edges = await getEdges(env.RENO_KV);
       const now = Date.now();
       for (const e of edges) {
-        if (now - new Date(e.lastSeen).getTime() > 20000) {
+        if (now - new Date(e.lastSeen).getTime() > 35000) {
           e.status = 'offline';
         }
       }
@@ -1209,7 +1209,7 @@ export default {
       const stations = await getStations(env.RENO_KV);
       const now = Date.now();
       for (const s of stations) {
-        if (now - new Date(s.lastSeen).getTime() > 20000) {
+        if (now - new Date(s.lastSeen).getTime() > 35000) {
           s.status = 'offline';
         }
       }
