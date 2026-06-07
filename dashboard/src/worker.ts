@@ -352,6 +352,49 @@ html, body {
   text-transform: uppercase;
 }
 
+/* ── Drag & drop cards ── */
+#cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#cards-container > .card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.drag-handle {
+  width: 14px; height: 14px;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: grab;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+  touch-action: none;
+}
+.card:hover .drag-handle { opacity: 0.45; }
+.drag-handle:hover { opacity: 0.8 !important; }
+/* Ghost: the transparent placeholder left behind while dragging */
+.card-ghost {
+  border-radius: var(--radius-lg);
+  background: rgba(255,255,255,0.04);
+  border: 1.5px dashed var(--border);
+  pointer-events: none;
+  transition: height 0.18s ease;
+}
+/* Flying clone that follows the cursor */
+.card-flying {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.3);
+  opacity: 0.92;
+  transform: rotate(1.5deg) scale(1.02);
+  transition: box-shadow 0.15s;
+  border-radius: var(--radius-lg);
+}
+/* Drop target highlight */
+.card-drop-above { box-shadow: 0 -3px 0 0 var(--accent); }
+.card-drop-below { box-shadow: 0 3px 0 0 var(--accent); }
+
 /* ── Nodes collapsible card ── */
 .nodes-card { overflow: hidden; }
 
@@ -760,9 +803,18 @@ html, body {
       </button>
     </header>
 
-    <div class="card nodes-card">
+    <div id="cards-container">
+
+    <div id="card-nodes" class="card nodes-card">
       <div class="nodes-header" onclick="toggleNodes()">
-        <span class="section-label">Edges &amp; Stations</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg class="drag-handle" data-drag-handle viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="9" cy="6" r="1.5" fill="currentColor"/><circle cx="15" cy="6" r="1.5" fill="currentColor"/>
+            <circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="9" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/>
+          </svg>
+          <span class="section-label">Edges &amp; Stations</span>
+        </div>
         <svg class="nodes-arrow" id="nodes-arrow" viewBox="0 0 24 24" aria-hidden="true">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
@@ -781,14 +833,23 @@ html, body {
       </div>
     </div>
 
-    <div class="card list-card">
+    <div id="card-tunnels" class="card list-card">
       <div class="list-header" style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px">
-        <span>Tunnels</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg class="drag-handle" data-drag-handle viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="9" cy="6" r="1.5" fill="currentColor"/><circle cx="15" cy="6" r="1.5" fill="currentColor"/>
+            <circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="9" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/>
+          </svg>
+          <span>Tunnels</span>
+        </div>
         <button class="modal-close add-btn" onclick="openCreate()" aria-label="Create tunnel">
           <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
       <div class="tunnel-list" id="tunnel-list"></div>
+    </div>
+
     </div>
 
     <div class="modal-overlay" id="create-overlay" onclick="handleOverlayClick(event)">
@@ -882,6 +943,120 @@ function showLogin() {
 function showApp() {
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'flex';
+  restoreCardOrder();
+  initCardDrag();
+}
+
+/* ── Trello-style card drag ── */
+function restoreCardOrder() {
+  try {
+    const order = JSON.parse(localStorage.getItem('card-order') || '[]');
+    if (!order.length) return;
+    const container = document.getElementById('cards-container');
+    order.forEach(function(id) {
+      const el = document.getElementById(id);
+      if (el) container.appendChild(el);
+    });
+  } catch(e) {}
+}
+
+function saveCardOrder() {
+  const container = document.getElementById('cards-container');
+  const ids = Array.from(container.children)
+    .filter(function(el) { return el.id && el.classList.contains('card'); })
+    .map(function(el) { return el.id; });
+  localStorage.setItem('card-order', JSON.stringify(ids));
+}
+
+function initCardDrag() {
+  const container = document.getElementById('cards-container');
+  let dragEl = null;   // real card (removed from flow during drag)
+  let flyEl  = null;   // fixed clone following cursor
+  let ghostEl = null;  // dashed placeholder in the list
+
+  // Capture pointer on body so moves outside container still register
+  document.addEventListener('pointerdown', onDown);
+
+  function onDown(e) {
+    const handle = e.target.closest('[data-drag-handle]');
+    if (!handle) return;
+    const card = handle.closest('.card');
+    if (!card || card.parentNode !== container) return;
+
+    e.preventDefault();
+
+    const rect = card.getBoundingClientRect();
+    const offX = e.clientX - rect.left;
+    const offY = e.clientY - rect.top;
+    const w = rect.width;
+    const h = rect.height;
+
+    dragEl = card;
+
+    // Ghost placeholder (stays in DOM flow so other cards animate into place)
+    ghostEl = document.createElement('div');
+    ghostEl.className = 'card-ghost';
+    ghostEl.style.height = h + 'px';
+    container.insertBefore(ghostEl, card);
+    card.remove(); // take card out of flow; ghost holds its space
+
+    // Flying clone
+    flyEl = card.cloneNode(true);
+    flyEl.className = card.className + ' card-flying';
+    flyEl.style.width  = w + 'px';
+    flyEl.style.left   = (e.clientX - offX) + 'px';
+    flyEl.style.top    = (e.clientY - offY) + 'px';
+    document.body.appendChild(flyEl);
+
+    function onMove(e) {
+      flyEl.style.left = (e.clientX - offX) + 'px';
+      flyEl.style.top  = (e.clientY - offY) + 'px';
+
+      // Reposition ghost: find the slot whose midpoint the cursor has crossed
+      const siblings = Array.from(container.children).filter(function(el) {
+        return el !== ghostEl;
+      });
+      let insertBefore = null;
+      for (let i = 0; i < siblings.length; i++) {
+        const r = siblings[i].getBoundingClientRect();
+        if (e.clientY < r.top + r.height / 2) { insertBefore = siblings[i]; break; }
+      }
+      if (insertBefore) container.insertBefore(ghostEl, insertBefore);
+      else container.appendChild(ghostEl);
+    }
+
+    function onUp() {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup',   onUp);
+      document.removeEventListener('pointercancel', onUp);
+
+      // Drop: put real card where ghost is, then remove ghost + clone
+      container.insertBefore(dragEl, ghostEl);
+      ghostEl.remove();
+      flyEl.remove();
+
+      // Landing pop animation
+      dragEl.style.transition = 'transform 0.2s cubic-bezier(.22,1,.36,1), box-shadow 0.2s ease';
+      dragEl.style.transform = 'scale(1.015)';
+      dragEl.style.boxShadow = '0 6px 20px rgba(0,0,0,0.22)';
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          dragEl.style.transform = '';
+          dragEl.style.boxShadow = '';
+          setTimeout(function() {
+            if (dragEl) { dragEl.style.transition = ''; }
+            dragEl = null; flyEl = null; ghostEl = null;
+          }, 200);
+        });
+      });
+
+      saveCardOrder();
+    }
+
+    document.addEventListener('pointermove',   onMove);
+    document.addEventListener('pointerup',     onUp);
+    document.addEventListener('pointercancel', onUp);
+  }
 }
 
 function connectWS() {
