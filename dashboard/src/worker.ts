@@ -942,6 +942,7 @@ function showApp() {
 }
 
 /* ── Item drag-to-reorder (Trello style) ── */
+let activeDragList = null; // set to listEl while a drag is in progress
 let tunnelOrder   = [];
 let edgeOrder     = [];
 let stationOrder  = [];
@@ -977,6 +978,7 @@ function makeSortable(listEl, idAttr, orderArr, orderKey) {
       if (!started) {
         if (Math.abs(ev.clientX - startX) < 5 && Math.abs(ev.clientY - startY) < 5) return;
         started = true;
+        activeDragList = listEl;
         document.body.classList.add('no-select');
         const rect = item.getBoundingClientRect();
         w = rect.width; h = rect.height;
@@ -1018,6 +1020,7 @@ function makeSortable(listEl, idAttr, orderArr, orderKey) {
       document.removeEventListener('pointerup',   onUp);
       document.removeEventListener('pointercancel', onUp);
       document.body.classList.remove('no-select');
+      activeDragList = null;
       if (!started) return;
 
       listEl.insertBefore(item, ghostEl);
@@ -1103,6 +1106,7 @@ const DEL_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6
 
 function renderEdges() {
   const el = document.getElementById('edge-list');
+  if (activeDragList === el) return;
   const sorted = applyOrder(edges, edgeOrder);
   if (!sorted.length) { el.innerHTML = '<div class="empty-sm">No edges</div>'; return; }
   el.innerHTML = sorted.map(function(e) {
@@ -1118,6 +1122,7 @@ function renderEdges() {
 
 function renderStations() {
   const el = document.getElementById('station-list');
+  if (activeDragList === el) return;
   const sorted = applyOrder(stations, stationOrder);
   if (!sorted.length) { el.innerHTML = '<div class="empty-sm">No stations</div>'; return; }
   el.innerHTML = sorted.map(function(s) {
@@ -1159,6 +1164,7 @@ function renderStationSelect() {
 
 function renderTunnels() {
   const list = document.getElementById('tunnel-list');
+  if (activeDragList === list) return;
   const sorted = applyOrder(tunnels, tunnelOrder);
   if (!sorted.length) {
     list.innerHTML = '<div class="empty"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="5" y1="19" x2="19" y2="19"/></svg>no tunnels yet</div>';
