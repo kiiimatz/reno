@@ -676,7 +676,7 @@ html, body {
 
 .tunnel-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 12px;
   align-items: center;
   padding: 12px 16px;
@@ -735,24 +735,15 @@ html, body {
 .t-proto {
   font-size: 11px;
   font-weight: 500;
-  color: var(--proto-text);
-  background: var(--proto-bg);
   padding: 3px 8px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
-
-.t-badge {
-  font-size: 11px;
-  font-weight: 500;
   border-radius: 20px;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition: background 0.25s ease, color 0.25s ease, padding 0.25s ease, opacity 0.18s ease, transform 0.22s cubic-bezier(.22,1,.36,1);
+  transition: background 0.22s ease, color 0.22s ease, opacity 0.18s ease, transform 0.22s cubic-bezier(.22,1,.36,1);
 }
-.t-badge.active { background: var(--badge-active-bg); color: var(--badge-active-text); padding: 3px 11px; }
-.t-badge.idle   { background: var(--badge-idle-bg);   color: var(--badge-idle-text);   padding: 3px 8px; }
+.t-proto.proto-active { background: var(--badge-active-bg); color: var(--badge-active-text); }
+.t-proto.proto-off    { background: var(--proto-bg);        color: var(--proto-text); }
 
 .t-del {
   background: var(--del-bg);
@@ -1078,7 +1069,7 @@ function makeSortable(listEl, idAttr, orderArr, orderKey) {
     const item = e.target.closest('[' + idAttr + ']');
     if (!item || item.parentNode !== listEl) return;
     // Don't drag when clicking buttons or toggle badges
-    if (e.target.closest('button') || e.target.closest('.t-badge')) return;
+    if (e.target.closest('button') || e.target.closest('.t-proto[data-toggle-id]')) return;
 
     const startX = e.clientX, startY = e.clientY;
     let started = false;
@@ -1291,8 +1282,9 @@ function renderTunnels() {
     const stationName = station ? esc(station.name) : '?';
     const stationAddr = station ? (station.address || station.host || '') : '';
     const remoteAddr  = stationAddr ? esc(stationAddr) + ':' + t.remote_port : ':' + t.remote_port;
+    const protoCls = 'proto-' + (badgeCls === 'active' ? 'active' : 'off');
     return '<div class="tunnel-item" data-tunnel-sort-id="' + esc(t.id) + '">' +
-      '<span class="t-proto">' + esc(t.protocol) + '</span>' +
+      '<span class="t-proto ' + protoCls + '" data-toggle-id="' + esc(t.id) + '">' + esc(t.protocol) + '</span>' +
       '<div>' +
         '<div class="t-name-row">' +
           '<span class="t-name">' + esc(t.name) + '</span>' +
@@ -1302,7 +1294,6 @@ function renderTunnels() {
           '<span class="t-copy-addr" data-copy="' + remoteAddr + '" title="click to copy">' + remoteAddr + '</span>' +
         '</div>' +
       '</div>' +
-      '<span class="t-badge ' + badgeCls + '" data-toggle-id="' + esc(t.id) + '">' + badgeTxt + '</span>' +
       '<span class="t-bytes">' + formatBytes(t.bytes || 0) + '</span>' +
       '<button class="t-del" data-tunnel-id="' + esc(t.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
@@ -1311,7 +1302,7 @@ function renderTunnels() {
 }
 
 document.addEventListener('click', function(e) {
-  const badge = e.target.closest('.t-badge[data-toggle-id]');
+  const badge = e.target.closest('.t-proto[data-toggle-id]');
   if (badge) { toggleTunnel(badge.dataset.toggleId); return; }
 
   const copyEl = e.target.closest('.t-copy-addr[data-copy]');
@@ -1331,19 +1322,17 @@ document.addEventListener('click', function(e) {
 });
 
 function updateBadge(id) {
-  const badge = document.querySelector('.t-badge[data-toggle-id="' + id + '"]');
-  if (!badge) return;
+  const proto = document.querySelector('.t-proto[data-toggle-id="' + id + '"]');
+  if (!proto) return;
   const t = tunnels.find(function(x) { return x.id === id; });
   if (!t) return;
   const edge    = edges.find(function(e) { return e.id === t.edge_id; });
   const station = stations.find(function(s) { return s.id === t.station_id; });
   const edgeOnline    = edge    && edge.status    === 'online';
   const stationOnline = station && station.status === 'online';
-  const enabled   = t.enabled !== false;
-  const badgeCls  = (!enabled || !(edgeOnline && stationOnline)) ? 'idle' : 'active';
-  const badgeTxt  = !enabled ? 'off' : (edgeOnline && stationOnline) ? 'active' : 'idle';
-  badge.className = 't-badge ' + badgeCls;
-  badge.textContent = badgeTxt;
+  const enabled  = t.enabled !== false;
+  const isActive = enabled && edgeOnline && stationOnline;
+  proto.className = 't-proto ' + (isActive ? 'proto-active' : 'proto-off');
 }
 
 async function toggleTunnel(id) {
@@ -1351,24 +1340,24 @@ async function toggleTunnel(id) {
   const idx = tunnels.findIndex(function(t) { return t.id === id; });
   if (idx === -1) return;
 
-  // Animate badge: shrink + fade out, swap, grow + fade in
-  const badge = document.querySelector('.t-badge[data-toggle-id="' + id + '"]');
-  if (badge) {
-    badge.style.opacity = '0';
-    badge.style.transform = 'scale(0.7)';
+  // Animate proto badge: shrink + fade out, swap, grow + fade in
+  const proto = document.querySelector('.t-proto[data-toggle-id="' + id + '"]');
+  if (proto) {
+    proto.style.opacity = '0';
+    proto.style.transform = 'scale(0.7)';
   }
 
   // Optimistic flip after short delay (mid-fade)
   setTimeout(function() {
     tunnels[idx] = Object.assign({}, tunnels[idx], { enabled: tunnels[idx].enabled === false });
     updateBadge(id);
-    const b = document.querySelector('.t-badge[data-toggle-id="' + id + '"]');
-    if (b) {
-      b.style.opacity = '0';
-      b.style.transform = 'scale(0.7)';
+    const p = document.querySelector('.t-proto[data-toggle-id="' + id + '"]');
+    if (p) {
+      p.style.opacity = '0';
+      p.style.transform = 'scale(0.7)';
       requestAnimationFrame(function() { requestAnimationFrame(function() {
-        b.style.opacity = '';
-        b.style.transform = '';
+        p.style.opacity = '';
+        p.style.transform = '';
       }); });
     }
   }, 120);
