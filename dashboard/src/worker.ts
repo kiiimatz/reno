@@ -353,6 +353,11 @@ html, body {
 }
 
 /* ── Item drag & drop ── */
+#cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .item-flying {
   position: fixed;
   z-index: 9999;
@@ -362,6 +367,7 @@ html, body {
   border-radius: 6px;
   background: var(--bg-primary);
   transform: scale(1.02);
+  user-select: none;
 }
 .item-ghost {
   border: 1.5px dashed var(--border);
@@ -370,6 +376,8 @@ html, body {
   pointer-events: none;
   box-sizing: border-box;
 }
+/* Prevent text selection during drag */
+.no-select, .no-select * { user-select: none !important; }
 
 /* ── Nodes collapsible card ── */
 .nodes-card { overflow: hidden; }
@@ -947,6 +955,7 @@ function makeSortable(listEl, idAttr, orderArr, orderKey) {
       if (!started) {
         if (Math.abs(ev.clientX - startX) < 5 && Math.abs(ev.clientY - startY) < 5) return;
         started = true;
+        document.body.classList.add('no-select');
         const rect = item.getBoundingClientRect();
         w = rect.width; h = rect.height;
         offX = startX - rect.left; offY = startY - rect.top;
@@ -986,6 +995,7 @@ function makeSortable(listEl, idAttr, orderArr, orderKey) {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup',   onUp);
       document.removeEventListener('pointercancel', onUp);
+      document.body.classList.remove('no-select');
       if (!started) return;
 
       listEl.insertBefore(item, ghostEl);
@@ -1079,7 +1089,6 @@ function renderEdges() {
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(e.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + e.status + '</span>' +
-      '<button class="t-del" data-edge-id="' + esc(e.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
   makeSortable(el, 'data-edge-sort-id', edgeOrder, 'edge-order');
@@ -1095,7 +1104,6 @@ function renderStations() {
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(s.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + s.status + '</span>' +
-      '<button class="t-del" data-station-id="' + esc(s.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
   makeSortable(el, 'data-station-sort-id', stationOrder, 'station-order');
