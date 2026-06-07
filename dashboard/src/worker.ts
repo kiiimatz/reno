@@ -1013,9 +1013,16 @@ function ctxDelete() {
   closeCtxMenu();
 }
 
-document.addEventListener('click',       function(e) { if (!e.target.closest('#ctx-menu')) closeCtxMenu(); });
-document.addEventListener('contextmenu', function(e) { if (!e.target.closest('.node-row'))  closeCtxMenu(); });
-document.addEventListener('keydown',     function(e) { if (e.key === 'Escape') closeCtxMenu(); });
+document.addEventListener('contextmenu', function(e) {
+  const row = e.target.closest('[data-ctx-type]');
+  if (row) {
+    openCtxMenu(e, row.dataset.ctxType, row.dataset.ctxId);
+  } else {
+    closeCtxMenu();
+  }
+});
+document.addEventListener('click',   function(e) { if (!e.target.closest('#ctx-menu')) closeCtxMenu(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeCtxMenu(); });
 
 function openCreate() {
   document.getElementById('create-overlay').classList.add('open');
@@ -1215,7 +1222,7 @@ function renderEdges() {
   if (!sorted.length) { el.innerHTML = '<div class="empty-sm">No edges</div>'; return; }
   el.innerHTML = sorted.map(function(e) {
     const cls = e.status === 'online' ? 'online' : 'offline';
-    return '<div class="node-row" data-edge-sort-id="' + esc(e.id) + '" oncontextmenu="openCtxMenu(event,\'edge\',\'' + esc(e.id) + '\')">' +
+    return '<div class="node-row" data-edge-sort-id="' + esc(e.id) + '" data-ctx-type="edge" data-ctx-id="' + esc(e.id) + '">' +
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(e.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + e.status + '</span>' +
@@ -1231,7 +1238,7 @@ function renderStations() {
   if (!sorted.length) { el.innerHTML = '<div class="empty-sm">No stations</div>'; return; }
   el.innerHTML = sorted.map(function(s) {
     const cls = s.status === 'online' ? 'online' : 'offline';
-    return '<div class="node-row" data-station-sort-id="' + esc(s.id) + '" oncontextmenu="openCtxMenu(event,\'station\',\'' + esc(s.id) + '\')">' +
+    return '<div class="node-row" data-station-sort-id="' + esc(s.id) + '" data-ctx-type="station" data-ctx-id="' + esc(s.id) + '">' +
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(s.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + s.status + '</span>' +
