@@ -20,6 +20,7 @@ interface Station {
   controlPort: number;
   certFingerprint: string;
   host: string;
+  address: string; // custom hostname/IP; empty = use host
   registeredAt: string;
   lastSeen: string;
   status: 'online' | 'offline';
@@ -666,6 +667,29 @@ html, body {
 .t-name  { font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .t-route { font-size: 11px; color: var(--text-label); font-family: var(--font); white-space: nowrap; flex-shrink: 0; font-weight: 400; }
 .t-addr  { font-size: 11px; font-weight: 400; color: var(--text-secondary); font-family: var(--font-sans); margin-top: 2px; }
+.t-copy-addr {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 3px;
+  margin: 0 -3px;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+.t-copy-addr:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+.t-copy-addr.copied::after {
+  content: 'copied!';
+  position: absolute;
+  left: 50%; top: -22px;
+  transform: translateX(-50%);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+}
 
 .t-proto {
   font-size: 11px;
@@ -1180,6 +1204,8 @@ function renderTunnels() {
     const badgeTxt = !enabled ? 'off' : (edgeOnline && stationOnline) ? 'active' : 'idle';
     const edgeName    = edge    ? esc(edge.name)    : '?';
     const stationName = station ? esc(station.name) : '?';
+    const stationAddr = station ? (station.address || station.host || '') : '';
+    const remoteAddr  = stationAddr ? esc(stationAddr) + ':' + t.remote_port : ':' + t.remote_port;
     return '<div class="tunnel-item" data-tunnel-sort-id="' + esc(t.id) + '">' +
       '<span class="t-proto">' + esc(t.protocol) + '</span>' +
       '<div>' +
@@ -1187,7 +1213,9 @@ function renderTunnels() {
           '<span class="t-name">' + esc(t.name) + '</span>' +
           '<span class="t-route">' + edgeName + ' \u2192 ' + stationName + '</span>' +
         '</div>' +
-        '<div class="t-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div>' +
+        '<div class="t-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 ' +
+          '<span class="t-copy-addr" data-copy="' + remoteAddr + '" title="click to copy">' + remoteAddr + '</span>' +
+        '</div>' +
       '</div>' +
       '<span class="t-badge ' + badgeCls + '" data-toggle-id="' + esc(t.id) + '">' + badgeTxt + '</span>' +
       '<span class="t-bytes">' + formatBytes(t.bytes || 0) + '</span>' +
@@ -1200,6 +1228,16 @@ function renderTunnels() {
 document.addEventListener('click', function(e) {
   const badge = e.target.closest('.t-badge[data-toggle-id]');
   if (badge) { toggleTunnel(badge.dataset.toggleId); return; }
+
+  const copyEl = e.target.closest('.t-copy-addr[data-copy]');
+  if (copyEl) {
+    navigator.clipboard.writeText(copyEl.dataset.copy).then(function() {
+      copyEl.classList.add('copied');
+      setTimeout(function() { copyEl.classList.remove('copied'); }, 1500);
+    });
+    return;
+  }
+
   const btn = e.target.closest('.t-del');
   if (!btn) return;
   if (btn.dataset.tunnelId)  deleteTunnel(btn.dataset.tunnelId);
@@ -1472,10 +1510,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === '/api/stations/register' && method === 'POST') {
     if (!secretOk) return unauthorized();
-    const body = await request.json() as { id: string; name: string; control_port: number; cert_fingerprint: string; host?: string };
+    const body = await request.json() as { id: string; name: string; control_port: number; cert_fingerprint: string; host?: string; address?: string };
     const now = new Date().toISOString();
     // Prefer the IPv4 address explicitly sent by the station; fall back to CF-Connecting-IP
     const host = body.host || request.headers.get('CF-Connecting-IP') || '';
+    const address = body.address || '';
     const stations = await getStations(env);
     let station = stations.find(s => s.id === body.id);
     if (station) {
@@ -1483,9 +1522,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
       station.controlPort = body.control_port;
       station.certFingerprint = body.cert_fingerprint;
       station.host = host;
+      station.address = address;
       station.lastSeen = now;
     } else {
-      station = { id: body.id, name: body.name, controlPort: body.control_port, certFingerprint: body.cert_fingerprint, host, registeredAt: now, lastSeen: now, status: 'online' };
+      station = { id: body.id, name: body.name, controlPort: body.control_port, certFingerprint: body.cert_fingerprint, host, address, registeredAt: now, lastSeen: now, status: 'online' };
       stations.push(station);
     }
     await saveStations(env, stations);

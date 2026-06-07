@@ -50,6 +50,7 @@ type Config struct {
 type StationConfig struct {
 	Name        string `json:"name"`
 	ControlPort int    `json:"control_port"`
+	Address     string `json:"address"` // custom hostname/IP shown in dashboard; empty = use auto-detected public IP
 }
 
 type EdgeConfig struct {
@@ -432,6 +433,7 @@ func runConfig() {
 			Station: StationConfig{
 				Name:        "my-station",
 				ControlPort: 7000,
+				Address:     "", // optional: custom hostname shown in dashboard (e.g. "example.com")
 			},
 			Edge: EdgeConfig{
 				// Empty = auto-connect to first station on dashboard
@@ -635,6 +637,7 @@ func registerStation(cfg Config) {
 		"control_port":     cfg.Station.ControlPort,
 		"cert_fingerprint": certFP,
 		"host":             getPublicIPv4(),
+		"address":          cfg.Station.Address,
 	}
 	data, _ := json.Marshal(body)
 	url := fmt.Sprintf("%s/api/stations/register?secret=%s", cfg.DashboardURL, cfg.APISecret)
