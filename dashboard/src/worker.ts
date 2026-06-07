@@ -173,368 +173,417 @@ function unauthorized(): Response {
 // --- Dashboard HTML ---
 
 const DASHBOARD_HTML = `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>reno</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg:       #1a1a1c;
-    --surface:  #252528;
-    --input:    #2e2e32;
-    --border:   #3a3a3e;
-    --text:     #e8e8ea;
-    --muted:    #8a8a8e;
-    --dim:      #5a5a5e;
-    --green:    #22c55e;
-    --green-bg: #14532d;
-    --offline:  #52525b;
-    --btn-bg:   #f4f4f5;
-    --btn-text: #18181b;
-    --blue:     #3b82f6;
-  }
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f4;
+  --bg-tertiary: #eeede9;
+  --bg-input: #f5f5f4;
+  --border: rgba(0,0,0,0.1);
+  --border-hover: rgba(0,0,0,0.2);
+  --text-primary: #1a1917;
+  --text-secondary: #6b6a67;
+  --text-tertiary: #9e9c98;
+  --text-on-accent: #ffffff;
+  --accent: #1a1917;
+  --accent-hover: #2e2d2a;
+  --badge-active-bg: #e8f5e9;
+  --badge-active-text: #2d7a3a;
+  --badge-idle-bg: #f0efeb;
+  --badge-idle-text: #9e9c98;
+  --proto-bg: #f0efeb;
+  --proto-text: #6b6a67;
+  --danger-text: #c0392b;
+  --danger-bg: #fdf0ef;
+  --scrollbar: rgba(0,0,0,0.12);
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font: 'DM Mono', monospace;
+  --font-sans: 'DM Sans', sans-serif;
+}
 
-  body.light {
-    --bg:       #f0f0f2;
-    --surface:  #ffffff;
-    --input:    #ebebed;
-    --border:   #d4d4d8;
-    --text:     #18181b;
-    --muted:    #52525b;
-    --dim:      #a1a1aa;
-    --green:    #16a34a;
-    --green-bg: #dcfce7;
-    --offline:  #a1a1aa;
-    --btn-bg:   #18181b;
-    --btn-text: #f4f4f5;
-  }
+[data-theme="dark"] {
+  --bg-primary: #1c1b19;
+  --bg-secondary: #252421;
+  --bg-tertiary: #2e2c29;
+  --bg-input: #252421;
+  --border: rgba(255,255,255,0.08);
+  --border-hover: rgba(255,255,255,0.15);
+  --text-primary: #f0ede8;
+  --text-secondary: #9e9c98;
+  --text-tertiary: #6b6a67;
+  --text-on-accent: #1a1917;
+  --accent: #e8e5e0;
+  --accent-hover: #f0ede8;
+  --badge-active-bg: #1a2e1c;
+  --badge-active-text: #6abf74;
+  --badge-idle-bg: #252421;
+  --badge-idle-text: #6b6a67;
+  --proto-bg: #2e2c29;
+  --proto-text: #9e9c98;
+  --danger-text: #e07060;
+  --danger-bg: #2e1e1c;
+  --scrollbar: rgba(255,255,255,0.1);
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    font-size: 14px;
-    min-height: 100vh;
-    transition: background 0.15s, color 0.15s;
-  }
+html, body {
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.2s, color 0.2s;
+}
 
-  /* ── Layout ── */
-  .wrap {
-    max-width: 680px;
-    margin: 0 auto;
-    padding: 40px 20px 60px;
-  }
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2.5rem 1rem;
+}
 
-  /* ── Header ── */
-  .hdr {
-    display: flex;
-    align-items: center;
-    margin-bottom: 24px;
-  }
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .logo-icon {
-    width: 36px; height: 36px;
-    background: var(--blue);
-    border-radius: 9px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 17px;
-    flex-shrink: 0;
-  }
-  .logo-name {
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: -0.4px;
-  }
-  .theme-btn {
-    margin-left: auto;
-    background: #f4f4f5;
-    border: 1.5px solid #d4d4d8;
-    border-radius: 20px;
-    color: #18181b;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 7px 16px;
-    transition: opacity 0.15s;
-    white-space: nowrap;
-  }
-  body.light .theme-btn {
-    background: #18181b;
-    border-color: #3f3f46;
-    color: #f4f4f5;
-  }
-  .theme-btn:hover { opacity: 0.85; }
+.container {
+  width: 100%;
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
 
-  /* ── Card ── */
-  .card {
-    background: var(--surface);
-    border-radius: 14px;
-    padding: 22px 24px;
-    margin-bottom: 10px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.35);
-  }
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+  margin-bottom: 0.5rem;
+}
 
-  .section-title {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1.5px;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-bottom: 16px;
-  }
+.logo { display: flex; align-items: center; gap: 10px; }
 
-  /* ── Two column ── */
-  .two-col {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 10px;
-  }
+.logo-icon {
+  width: 30px; height: 30px;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+}
 
-  /* ── Node rows (edges / stations) ── */
-  .node-row {
-    display: flex;
-    align-items: center;
-    padding: 9px 0;
-    border-bottom: 1px solid var(--border);
-    gap: 8px;
-  }
-  .node-row:last-child { border-bottom: none; }
+.logo-icon svg {
+  width: 16px; height: 16px;
+  stroke: var(--text-on-accent);
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
-  .node-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .node-dot.online  { background: var(--green); }
-  .node-dot.offline { background: var(--offline); }
+.logo-text {
+  font-family: var(--font);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
 
-  .node-label {
-    flex: 1;
-    font-size: 13px;
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.theme-toggle {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
 
-  .node-status {
-    font-size: 11px;
-    flex-shrink: 0;
-  }
-  .node-status.online  { color: var(--green); }
-  .node-status.offline { color: var(--offline); }
+.theme-toggle:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 
-  .icon-btn {
-    width: 28px; height: 28px;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--input);
-    border: 1.5px solid var(--border);
-    border-radius: 7px;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 13px;
-    flex-shrink: 0;
-    transition: border-color 0.12s, color 0.12s;
-  }
-  .icon-btn:hover { border-color: #ef4444; color: #ef4444; }
+.theme-toggle svg {
+  width: 14px; height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
 
-  .empty-msg {
-    color: var(--dim);
-    font-size: 12px;
-    padding: 4px 0;
-  }
+.card {
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  transition: background 0.2s, border-color 0.2s;
+}
 
-  /* ── Form ── */
-  .form-row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: flex-end;
-  }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    min-width: 0;
-  }
-  .field label {
-    font-size: 11px;
-    color: var(--muted);
-  }
+.node-card { padding: 1rem 1.25rem; }
 
-  .f-edge    { flex: 1.2; min-width: 100px; }
-  .f-station { flex: 1.2; min-width: 100px; }
-  .f-proto   { flex: 0.7; min-width: 72px; }
-  .f-ip      { flex: 1.6; min-width: 110px; }
-  .f-port    { flex: 0.8; min-width: 72px; }
-  .f-rport   { flex: 0.8; min-width: 72px; }
+.section-label {
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
 
-  .form-row2 {
-    display: flex;
-    gap: 8px;
-    align-items: flex-end;
-    margin-top: 8px;
-  }
-  .f-name { flex: 1; }
+.node-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+.node-row:last-child { border-bottom: none; }
 
-  input, select {
-    background: var(--input);
-    border: 1.5px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 13px;
-    font-weight: 500;
-    padding: 9px 11px;
-    width: 100%;
-    outline: none;
-    transition: border-color 0.15s;
-    -webkit-appearance: none;
-    appearance: none;
-  }
-  select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a8a8e'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    padding-right: 28px;
-  }
-  input::placeholder { color: var(--dim); font-weight: 400; }
-  input:focus, select:focus { border-color: var(--blue); }
+.node-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.node-dot.online  { background: var(--badge-active-text); }
+.node-dot.offline { background: var(--text-tertiary); }
 
-  .btn {
-    background: var(--btn-bg);
-    color: var(--btn-text);
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 9px 22px;
-    white-space: nowrap;
-    flex-shrink: 0;
-    transition: opacity 0.12s;
-  }
-  .btn:hover { opacity: 0.85; }
+.node-name {
+  flex: 1;
+  font-size: 12px; font-weight: 500;
+  font-family: var(--font-sans);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
-  /* ── Tunnel rows ── */
-  .tunnel-row {
-    display: flex;
-    align-items: center;
-    padding: 13px 0;
-    border-bottom: 1px solid var(--border);
-    gap: 12px;
-  }
-  .tunnel-row:last-child { border-bottom: none; }
+.node-status { font-size: 11px; font-family: var(--font); flex-shrink: 0; }
+.node-status.online  { color: var(--badge-active-text); }
+.node-status.offline { color: var(--text-tertiary); }
 
-  .tunnel-info { flex: 1; min-width: 0; }
-  .tunnel-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .tunnel-addr {
-    font-size: 12px;
-    color: #6a6a6e;
-    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
-    margin-top: 2px;
-  }
-  .tunnel-sub {
-    font-size: 11px;
-    color: var(--dim);
-    margin-top: 2px;
-  }
+.empty-sm { font-size: 11px; color: var(--text-tertiary); font-family: var(--font); padding: 2px 0; }
 
-  .tunnel-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  .proto-text {
-    font-size: 11px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    min-width: 34px;
-    text-align: right;
-  }
-  .status-active {
-    font-size: 11px;
-    font-weight: 500;
-    padding: 3px 10px;
-    border-radius: 20px;
-    background: var(--green-bg);
-    color: var(--green);
-  }
-  .status-idle {
-    font-size: 11px;
-    color: var(--muted);
-  }
+.create-card { padding: 1.25rem; }
 
-  /* ── Login ── */
-  .login-page {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-  }
-  .login-box {
-    background: var(--surface);
-    border-radius: 16px;
-    padding: 40px 36px;
-    width: 100%;
-    max-width: 360px;
-  }
-  .login-logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 32px;
-  }
-  .login-logo-icon {
-    width: 36px; height: 36px;
-    background: var(--blue);
-    border-radius: 9px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 17px;
-  }
-  .login-logo-name { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
-  .login-field { margin-bottom: 12px; }
-  .login-field label {
-    display: block;
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-  }
-  .login-field input { width: 100%; }
-  .login-btn {
-    width: 100%;
-    background: var(--btn-bg);
-    color: var(--btn-text);
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 12px;
-    margin-top: 10px;
-    transition: opacity 0.12s;
-  }
-  .login-btn:hover { opacity: 0.85; }
-  .login-err { color: #ef4444; font-size: 12px; margin-top: 10px; text-align: center; }
+.create-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 80px 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.create-fields-2 {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.field { display: flex; flex-direction: column; }
+.field-sm { width: 80px; flex-shrink: 0; display: flex; flex-direction: column; }
+.field-grow { flex: 1; display: flex; flex-direction: column; }
+
+.field label, .field-sm label, .field-grow label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 5px;
+  font-family: var(--font);
+}
+
+.field input, .field select,
+.field-sm input, .field-sm select,
+.field-grow input, .field-grow select {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-family: var(--font);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.field input::placeholder, .field-sm input::placeholder, .field-grow input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.field input:focus, .field select:focus,
+.field-sm input:focus, .field-sm select:focus,
+.field-grow input:focus, .field-grow select:focus {
+  border-color: var(--border-hover);
+  background: var(--bg-primary);
+}
+
+.field select, .field-sm select, .field-grow select {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239e9c98' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+}
+
+.create-footer { display: flex; justify-content: flex-end; }
+
+.btn-create {
+  height: 34px;
+  padding: 0 18px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.btn-create:hover { background: var(--accent-hover); }
+.btn-create:active { transform: scale(0.97); }
+
+.list-card { overflow: hidden; }
+
+.list-header {
+  padding: 12px 14px 0;
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.tunnel-list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px 0 4px;
+}
+
+.tunnel-list::-webkit-scrollbar { width: 3px; }
+.tunnel-list::-webkit-scrollbar-track { background: transparent; }
+.tunnel-list::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+
+.tunnel-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 14px;
+  border-bottom: 0.5px solid var(--border);
+  transition: background 0.1s;
+}
+.tunnel-item:last-child { border-bottom: none; }
+.tunnel-item:hover { background: var(--bg-secondary); }
+
+.t-name { font-size: 13px; font-weight: 500; color: var(--text-primary); font-family: var(--font-sans); }
+.t-addr { font-size: 11px; color: var(--text-tertiary); font-family: var(--font); margin-top: 2px; }
+
+.t-proto {
+  font-size: 10px;
+  font-family: var(--font);
+  font-weight: 500;
+  color: var(--proto-text);
+  background: var(--proto-bg);
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.t-badge {
+  font-size: 10px;
+  font-family: var(--font);
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.t-badge.active { background: var(--badge-active-bg); color: var(--badge-active-text); }
+.t-badge.idle   { background: var(--badge-idle-bg);   color: var(--badge-idle-text); }
+
+.t-del {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px;
+  border-radius: var(--radius-sm);
+  transition: background 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.t-del:hover { background: var(--danger-bg); color: var(--danger-text); }
+.t-del svg {
+  width: 13px; height: 13px;
+  stroke: currentColor; fill: none;
+  stroke-width: 2; stroke-linecap: round;
+}
+
+.empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-family: var(--font);
+}
+.empty svg {
+  width: 28px; height: 28px;
+  stroke: var(--text-tertiary); fill: none;
+  stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round;
+  display: block; margin: 0 auto 10px; opacity: 0.4;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-secondary);
+  padding: 1rem;
+}
+.login-box {
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 2rem;
+  width: 100%; max-width: 320px;
+}
+.login-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; }
+.login-field { margin-bottom: 10px; }
+.login-field label {
+  display: block;
+  font-size: 11px; color: var(--text-tertiary);
+  margin-bottom: 5px; font-family: var(--font);
+}
+.login-field input {
+  width: 100%; height: 34px; padding: 0 10px;
+  font-size: 12px; font-family: var(--font);
+  color: var(--text-primary); background: var(--bg-input);
+  border: 0.5px solid var(--border); border-radius: var(--radius-sm);
+  outline: none; transition: border-color 0.15s;
+}
+.login-field input:focus { border-color: var(--border-hover); }
+.login-btn {
+  width: 100%; height: 36px;
+  background: var(--accent); color: var(--text-on-accent);
+  border: none; border-radius: var(--radius-sm);
+  font-family: var(--font); font-size: 13px; font-weight: 500;
+  cursor: pointer; margin-top: 6px; transition: background 0.15s;
+}
+.login-btn:hover { background: var(--accent-hover); }
+.login-err { color: var(--danger-text); font-size: 11px; font-family: var(--font); margin-top: 8px; text-align: center; }
+
+@media (max-width: 480px) {
+  .create-fields { grid-template-columns: 1fr 1fr; }
+  .two-col { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
@@ -542,8 +591,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <div id="login-view" class="login-page" style="display:none">
   <div class="login-box">
     <div class="login-logo">
-      <div class="login-logo-icon">&#10052;</div>
-      <span class="login-logo-name">reno</span>
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
+          <line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="5" y1="19" x2="19" y2="19"/>
+        </svg>
+      </div>
+      <span class="logo-text">reno</span>
     </div>
     <div class="login-field">
       <label>Username</label>
@@ -558,71 +612,82 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   </div>
 </div>
 
-<div id="app-view" style="display:none">
-  <div class="wrap">
+<div id="app-view" class="page" style="display:none">
+  <div class="container">
 
-    <div class="hdr">
+    <header class="header">
       <div class="logo">
-        <div class="logo-icon">&#10052;</div>
-        <span class="logo-name">reno</span>
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
+            <line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="5" y1="19" x2="19" y2="19"/>
+          </svg>
+        </div>
+        <span class="logo-text">reno</span>
       </div>
-      <button class="theme-btn" onclick="toggleTheme()">&#x1F319; dark</button>
-    </div>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg id="themeIcon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <span id="themeLabel">dark</span>
+      </button>
+    </header>
 
     <div class="two-col">
-      <div class="card" style="margin-bottom:0">
-        <div class="section-title">Edges</div>
-        <div id="edge-list"><div class="empty-msg">No edges</div></div>
+      <div class="card node-card">
+        <div class="section-label">Edges</div>
+        <div id="edge-list"><div class="empty-sm">No edges</div></div>
       </div>
-      <div class="card" style="margin-bottom:0">
-        <div class="section-title">Stations</div>
-        <div id="station-list"><div class="empty-msg">No stations</div></div>
+      <div class="card node-card">
+        <div class="section-label">Stations</div>
+        <div id="station-list"><div class="empty-sm">No stations</div></div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="section-title">Create Tunnel</div>
-      <div class="form-row">
-        <div class="field f-edge">
+    <div class="card create-card">
+      <div class="section-label">Create</div>
+      <div class="create-fields">
+        <div class="field">
           <label>Edge</label>
           <select id="form-edge"><option value="">Select...</option></select>
         </div>
-        <div class="field f-station">
+        <div class="field">
           <label>Station</label>
           <select id="form-station"><option value="">Select...</option></select>
         </div>
-        <div class="field f-proto">
+        <div class="field">
           <label>Protocol</label>
           <select id="form-protocol">
-            <option>TCP</option><option>UDP</option><option>QUIC</option>
-            <option>HTTP</option><option>HTTPS</option>
+            <option>TCP</option><option>UDP</option><option>QUIC</option><option>HTTP</option><option>HTTPS</option>
           </select>
         </div>
-        <div class="field f-ip">
+        <div class="field">
           <label>IP</label>
-          <input type="text" id="form-ip" placeholder="127.0.0.1" value="127.0.0.1" />
-        </div>
-        <div class="field f-port">
-          <label>Port</label>
-          <input type="number" id="form-port" placeholder="8080" />
-        </div>
-        <div class="field f-rport">
-          <label>Remote Port</label>
-          <input type="number" id="form-remote-port" placeholder="13000" />
+          <input id="form-ip" type="text" placeholder="127.0.0.1" value="127.0.0.1" />
         </div>
       </div>
-      <div class="form-row2">
-        <div class="field f-name">
-          <label>Name</label>
-          <input type="text" id="form-name" placeholder="my-service" />
+      <div class="create-fields-2">
+        <div class="field-sm">
+          <label>Port</label>
+          <input id="form-port" type="number" placeholder="8080" />
         </div>
-        <button class="btn" onclick="createTunnel()">Create</button>
+        <div class="field-sm" style="width:96px">
+          <label>Remote Port</label>
+          <input id="form-remote-port" type="number" placeholder="13000" />
+        </div>
+        <div class="field-grow">
+          <label>Name</label>
+          <input id="form-name" type="text" placeholder="my-service" />
+        </div>
+      </div>
+      <div class="create-footer">
+        <button class="btn-create" onclick="createTunnel()">Create</button>
       </div>
     </div>
 
-    <div class="card">
-      <div class="section-title">Tunnels</div>
-      <div id="tunnel-list"><div class="empty-msg">No tunnels yet</div></div>
+    <div class="card list-card">
+      <div class="list-header">Tunnels</div>
+      <div class="tunnel-list" id="tunnel-list"></div>
     </div>
 
   </div>
@@ -650,7 +715,7 @@ function showLogin() {
 
 function showApp() {
   document.getElementById('login-view').style.display = 'none';
-  document.getElementById('app-view').style.display = 'block';
+  document.getElementById('app-view').style.display = 'flex';
 }
 
 function connectWS() {
@@ -692,45 +757,41 @@ async function doLogin() {
 
 async function refresh() {
   const [eRes, sRes, tRes] = await Promise.all([
-    fetch('/api/edges'),
-    fetch('/api/stations'),
-    fetch('/api/tunnels')
+    fetch('/api/edges'), fetch('/api/stations'), fetch('/api/tunnels')
   ]);
   if (sRes.status === 401) { showLogin(); return; }
   edges    = (await eRes.json()).edges    || [];
   stations = (await sRes.json()).stations || [];
   tunnels  = (await tRes.json()).tunnels  || [];
-  renderEdges();
-  renderStations();
-  renderEdgeSelect();
-  renderStationSelect();
-  renderTunnels();
+  renderEdges(); renderStations(); renderEdgeSelect(); renderStationSelect(); renderTunnels();
 }
+
+const DEL_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
 function renderEdges() {
   const el = document.getElementById('edge-list');
-  if (!edges.length) { el.innerHTML = '<div class="empty-msg">No edges</div>'; return; }
-  el.innerHTML = edges.map(e => {
+  if (!edges.length) { el.innerHTML = '<div class="empty-sm">No edges</div>'; return; }
+  el.innerHTML = edges.map(function(e) {
     const cls = e.status === 'online' ? 'online' : 'offline';
     return '<div class="node-row">' +
       '<span class="node-dot ' + cls + '"></span>' +
-      '<span class="node-label">' + esc(e.name) + '</span>' +
+      '<span class="node-name">' + esc(e.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + e.status + '</span>' +
-      '<button class="icon-btn" data-edge-id="' + esc(e.id) + '">&#x2715;</button>' +
+      '<button class="t-del" data-edge-id="' + esc(e.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
 }
 
 function renderStations() {
   const el = document.getElementById('station-list');
-  if (!stations.length) { el.innerHTML = '<div class="empty-msg">No stations</div>'; return; }
-  el.innerHTML = stations.map(s => {
+  if (!stations.length) { el.innerHTML = '<div class="empty-sm">No stations</div>'; return; }
+  el.innerHTML = stations.map(function(s) {
     const cls = s.status === 'online' ? 'online' : 'offline';
     return '<div class="node-row">' +
       '<span class="node-dot ' + cls + '"></span>' +
-      '<span class="node-label">' + esc(s.name) + '</span>' +
+      '<span class="node-name">' + esc(s.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + s.status + '</span>' +
-      '<button class="icon-btn" data-station-id="' + esc(s.id) + '">&#x2715;</button>' +
+      '<button class="t-del" data-station-id="' + esc(s.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
 }
@@ -763,30 +824,26 @@ function renderStationSelect() {
 
 function renderTunnels() {
   const list = document.getElementById('tunnel-list');
-  if (!tunnels.length) { list.innerHTML = '<div class="empty-msg">No tunnels yet</div>'; return; }
-  list.innerHTML = tunnels.map(t => {
-    const edgeName    = (edges.find(e => e.id === t.edge_id) || {}).name || t.edge_id || '?';
-    const stationName = (stations.find(s => s.id === t.station_id) || {}).name || t.station_id || '?';
-    const statusHtml  = t.status === 'active'
-      ? '<span class="status-active">active</span>'
-      : '<span class="status-idle">idle</span>';
-    return '<div class="tunnel-row">' +
-      '<div class="tunnel-info">' +
-        '<div class="tunnel-name">' + esc(t.name) + '</div>' +
-        '<div class="tunnel-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div>' +
-        '<div class="tunnel-sub">' + esc(edgeName) + ' \u2192 ' + esc(stationName) + '</div>' +
-      '</div>' +
-      '<div class="tunnel-right">' +
-        '<span class="proto-text">' + esc(t.protocol) + '</span>' +
-        statusHtml +
-        '<button class="icon-btn" data-tunnel-id="' + esc(t.id) + '">&#x2715;</button>' +
-      '</div>' +
+  if (!tunnels.length) {
+    list.innerHTML = '<div class="empty"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="5" y1="19" x2="19" y2="19"/></svg>no tunnels yet</div>';
+    return;
+  }
+  list.innerHTML = tunnels.map(function(t) {
+    const badge = t.status === 'active'
+      ? '<span class="t-badge active">active</span>'
+      : '<span class="t-badge idle">idle</span>';
+    return '<div class="tunnel-item">' +
+      '<div><div class="t-name">' + esc(t.name) + '</div>' +
+      '<div class="t-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div></div>' +
+      '<span class="t-proto">' + esc(t.protocol) + '</span>' +
+      badge +
+      '<button class="t-del" data-tunnel-id="' + esc(t.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
 }
 
 document.addEventListener('click', function(e) {
-  const btn = e.target.closest('.icon-btn');
+  const btn = e.target.closest('.t-del');
   if (!btn) return;
   if (btn.dataset.tunnelId)  deleteTunnel(btn.dataset.tunnelId);
   if (btn.dataset.edgeId)    deleteEdge(btn.dataset.edgeId);
@@ -801,12 +858,7 @@ async function createTunnel() {
   const localPort  = parseInt(document.getElementById('form-port').value);
   const name       = document.getElementById('form-name').value;
   const remotePort = parseInt(document.getElementById('form-remote-port').value);
-
-  if (!edgeId || !stationId || !localPort || !name || !remotePort) {
-    alert('Please fill in all fields');
-    return;
-  }
-
+  if (!edgeId || !stationId || !localPort || !name || !remotePort) { alert('Please fill in all fields'); return; }
   lastMutation = Date.now();
   const res = await fetch('/api/tunnels', {
     method: 'POST',
@@ -825,31 +877,39 @@ async function createTunnel() {
 
 function deleteTunnel(id) {
   lastMutation = Date.now();
-  tunnels = tunnels.filter(t => t.id !== id);
+  tunnels = tunnels.filter(function(t) { return t.id !== id; });
   renderTunnels();
   fetch('/api/tunnels/' + id, { method: 'DELETE' });
 }
 
 function deleteEdge(id) {
   lastMutation = Date.now();
-  edges = edges.filter(e => e.id !== id);
-  renderEdges();
-  renderEdgeSelect();
+  edges = edges.filter(function(e) { return e.id !== id; });
+  renderEdges(); renderEdgeSelect();
   fetch('/api/edges/' + id, { method: 'DELETE' });
 }
 
 function deleteStation(id) {
   lastMutation = Date.now();
-  stations = stations.filter(s => s.id !== id);
-  renderStations();
-  renderStationSelect();
+  stations = stations.filter(function(s) { return s.id !== id; });
+  renderStations(); renderStationSelect();
   fetch('/api/stations/' + id, { method: 'DELETE' });
 }
 
+let dark = true;
+
 function toggleTheme() {
-  document.body.classList.toggle('light');
-  document.querySelector('.theme-btn').textContent =
-    document.body.classList.contains('light') ? '\u2600\uFE0F light' : '\uD83C\uDF19 dark';
+  dark = !dark;
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const icon = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  if (dark) {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+    label.textContent = 'dark';
+  } else {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+    label.textContent = 'light';
+  }
 }
 
 function esc(str) {
