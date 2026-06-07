@@ -22,19 +22,35 @@ case "$ARCH" in
 esac
 
 BINARY="reno-${OS}-${ARCH}"
+TMP="$(mktemp)"
 DEST="${INSTALL_DIR}/reno"
 
 echo "Downloading reno (${OS}/${ARCH})..."
 
 if command -v curl &>/dev/null; then
-  curl -fsSL "${BASE_URL}/${BINARY}" -o "$DEST"
+  curl -fsSL "${BASE_URL}/${BINARY}" -o "$TMP"
 elif command -v wget &>/dev/null; then
-  wget -q "${BASE_URL}/${BINARY}" -O "$DEST"
+  wget -q "${BASE_URL}/${BINARY}" -O "$TMP"
 else
   echo "curl or wget is required"; exit 1
 fi
 
-chmod +x "$DEST"
+chmod +x "$TMP"
+
+# Install to /usr/local/bin, using sudo if needed
+if [ -w "$INSTALL_DIR" ]; then
+  mv "$TMP" "$DEST"
+elif command -v sudo &>/dev/null; then
+  sudo mv "$TMP" "$DEST"
+else
+  # Fallback: install to ~/.local/bin
+  INSTALL_DIR="$HOME/.local/bin"
+  mkdir -p "$INSTALL_DIR"
+  DEST="${INSTALL_DIR}/reno"
+  mv "$TMP" "$DEST"
+  echo "Note: installed to $DEST (not in PATH by default, add ~/.local/bin to PATH)"
+fi
+
 echo "Installed: $DEST"
 
 # Optional: start services based on argument
