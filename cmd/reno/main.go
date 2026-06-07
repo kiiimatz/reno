@@ -618,19 +618,32 @@ func registerStation(cfg Config) {
 		"ip":               ip,
 	}
 	data, _ := json.Marshal(body)
-	resp, err := http.Post(cfg.DashboardURL+"/api/stations/register", "application/json", bytes.NewReader(data))
-	if err != nil {
-		log.Fatalf("register: %v", err)
+	for {
+		resp, err := http.Post(cfg.DashboardURL+"/api/stations/register", "application/json", bytes.NewReader(data))
+		if err != nil {
+			log.Printf("register: %v — retrying in 5s", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var result struct {
+			StationID string `json:"station_id"`
+		}
+		if err := json.Unmarshal(bodyBytes, &result); err != nil {
+			log.Printf("decode register (HTTP %d body=%q): %v — retrying in 5s", resp.StatusCode, string(bodyBytes), err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		if result.StationID == "" {
+			log.Printf("register returned empty station_id (HTTP %d body=%q) — retrying in 5s", resp.StatusCode, string(bodyBytes))
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		stationID = result.StationID
+		log.Printf("Registered as station %s (name: %s, ip: %s)", stationID, cfg.Station.Name, ip)
+		return
 	}
-	defer resp.Body.Close()
-	var result struct {
-		StationID string `json:"station_id"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		log.Fatalf("decode register: %v", err)
-	}
-	stationID = result.StationID
-	log.Printf("Registered as station %s (name: %s, ip: %s)", stationID, cfg.Station.Name, ip)
 }
 
 func getPublicIP() string {
