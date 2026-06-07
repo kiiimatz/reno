@@ -189,23 +189,23 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f4;
-  --bg-tertiary: #eeede9;
-  --bg-input: #f5f5f4;
-  --border: rgba(0,0,0,0.1);
-  --border-hover: rgba(0,0,0,0.2);
+  --bg-primary: #f7f6f3;
+  --bg-secondary: #eeecea;
+  --bg-tertiary: #e4e2de;
+  --bg-input: #eeecea;
+  --border: rgba(0,0,0,0.09);
+  --border-hover: rgba(0,0,0,0.18);
   --text-primary: #1a1917;
   --text-secondary: #6b6a67;
   --text-tertiary: #9e9c98;
   --text-on-accent: #ffffff;
   --accent: #1a1917;
   --accent-hover: #2e2d2a;
-  --badge-active-bg: #e8f5e9;
-  --badge-active-text: #2d7a3a;
-  --badge-idle-bg: #f0efeb;
+  --badge-active-bg: #d6f0da;
+  --badge-active-text: #2a6e34;
+  --badge-idle-bg: #e4e2de;
   --badge-idle-text: #9e9c98;
-  --proto-bg: #f0efeb;
+  --proto-bg: #e4e2de;
   --proto-text: #6b6a67;
   --danger-text: #c0392b;
   --danger-bg: #fdf0ef;
@@ -219,28 +219,28 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 }
 
 [data-theme="dark"] {
-  --bg-primary: #1c1b19;
-  --bg-secondary: #252421;
-  --bg-tertiary: #2e2c29;
-  --bg-input: #252421;
-  --border: rgba(255,255,255,0.08);
-  --border-hover: rgba(255,255,255,0.15);
-  --text-primary: #f0ede8;
-  --text-secondary: #9e9c98;
-  --text-tertiary: #6b6a67;
-  --text-on-accent: #1a1917;
-  --accent: #e8e5e0;
-  --accent-hover: #f0ede8;
+  --bg-primary: rgb(48,48,46);
+  --bg-secondary: rgb(31,31,30);
+  --bg-tertiary: #3a3a38;
+  --bg-input: #3a3a38;
+  --border: rgba(255,255,255,0.07);
+  --border-hover: rgba(255,255,255,0.14);
+  --text-primary: #e8e5e0;
+  --text-secondary: #8a8784;
+  --text-tertiary: #5a5856;
+  --text-on-accent: #1f1f1e;
+  --accent: #dedad4;
+  --accent-hover: #eae7e2;
   --badge-active-bg: #1a2e1c;
-  --badge-active-text: #6abf74;
-  --badge-idle-bg: #252421;
-  --badge-idle-text: #6b6a67;
-  --proto-bg: #2e2c29;
-  --proto-text: #9e9c98;
+  --badge-active-text: #5cb96a;
+  --badge-idle-bg: #3a3a38;
+  --badge-idle-text: #5a5856;
+  --proto-bg: #3a3a38;
+  --proto-text: #8a8784;
   --danger-text: #e07060;
   --danger-bg: #2e1e1c;
-  --scrollbar: rgba(255,255,255,0.1);
-  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --scrollbar: rgba(255,255,255,0.08);
+  --shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 
 html, body {
@@ -265,7 +265,7 @@ html, body {
   max-width: 540px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 6px;
 }
 
 .header {
@@ -335,7 +335,7 @@ html, body {
   transition: background 0.2s, border-color 0.2s;
 }
 
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
 .node-card { padding: 1rem 1.25rem; }
 
@@ -479,46 +479,25 @@ html, body {
 
 .tunnel-item {
   display: grid;
-  grid-template-columns: 1fr auto auto auto auto;
-  gap: 10px;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 8px;
   align-items: center;
-  padding: 9px 14px;
+  padding: 7px 14px;
   border-bottom: 0.5px solid var(--border);
   transition: background 0.1s;
 }
-
-.t-toggle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.t-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
-.t-toggle-track {
-  width: 28px; height: 16px;
-  background: var(--border);
-  border-radius: 8px;
-  transition: background 0.2s;
-  position: relative;
-}
-.t-toggle-track::after {
-  content: '';
-  position: absolute;
-  left: 2px; top: 2px;
-  width: 12px; height: 12px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.2s;
-}
-.t-toggle input:checked + .t-toggle-track { background: var(--badge-active-text); }
-.t-toggle input:checked + .t-toggle-track::after { transform: translateX(12px); }
 .tunnel-item:last-child { border-bottom: none; }
-.tunnel-item:hover { background: var(--bg-secondary); }
+.tunnel-item:hover { background: var(--bg-tertiary); }
 
-.t-name { font-size: 13px; font-weight: 500; color: var(--text-primary); font-family: var(--font-sans); }
-.t-route { font-size: 11px; color: var(--text-secondary); font-family: var(--font-sans); margin-top: 1px; }
-.t-addr { font-size: 11px; color: var(--text-tertiary); font-family: var(--font); margin-top: 1px; }
+.t-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  overflow: hidden;
+}
+.t-name { font-size: 12px; font-weight: 500; color: var(--text-primary); font-family: var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-route { font-size: 10px; color: var(--text-tertiary); font-family: var(--font); white-space: nowrap; flex-shrink: 0; }
+.t-addr { font-size: 10px; color: var(--text-tertiary); font-family: var(--font); margin-top: 1px; }
 
 .t-proto {
   font-size: 10px;
@@ -534,12 +513,14 @@ html, body {
 .t-badge {
   font-size: 10px;
   font-family: var(--font);
-  padding: 2px 8px;
   border-radius: 20px;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.28s ease, color 0.28s ease, padding 0.28s ease;
 }
-.t-badge.active { background: var(--badge-active-bg); color: var(--badge-active-text); }
-.t-badge.idle   { background: var(--badge-idle-bg);   color: var(--badge-idle-text); }
+.t-badge.active { background: var(--badge-active-bg); color: var(--badge-active-text); padding: 2px 9px; }
+.t-badge.idle   { background: var(--badge-idle-bg);   color: var(--badge-idle-text);   padding: 2px 7px; }
 
 .t-del {
   background: transparent;
@@ -870,31 +851,28 @@ function renderTunnels() {
     const edgeOnline    = edge    && edge.status    === 'online';
     const stationOnline = station && station.status === 'online';
     const enabled = t.enabled !== false;
-    const badge = !enabled
-      ? '<span class="t-badge idle">off</span>'
-      : (edgeOnline && stationOnline)
-        ? '<span class="t-badge active">active</span>'
-        : '<span class="t-badge idle">idle</span>';
+    const badgeCls = (!enabled || !(edgeOnline && stationOnline)) ? 'idle' : 'active';
+    const badgeTxt = !enabled ? 'off' : (edgeOnline && stationOnline) ? 'active' : 'idle';
     const edgeName    = edge    ? esc(edge.name)    : '?';
     const stationName = station ? esc(station.name) : '?';
     return '<div class="tunnel-item">' +
       '<div>' +
-        '<div class="t-name">' + esc(t.name) + '</div>' +
-        '<div class="t-route">' + edgeName + ' \u2192 ' + stationName + '</div>' +
+        '<div class="t-name-row">' +
+          '<span class="t-name">' + esc(t.name) + '</span>' +
+          '<span class="t-route">' + edgeName + ' \u2192 ' + stationName + '</span>' +
+        '</div>' +
         '<div class="t-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div>' +
       '</div>' +
       '<span class="t-proto">' + esc(t.protocol) + '</span>' +
-      badge +
-      '<label class="t-toggle" title="' + (enabled ? 'Disable' : 'Enable') + ' tunnel">' +
-        '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-toggle-id="' + esc(t.id) + '">' +
-        '<span class="t-toggle-track"></span>' +
-      '</label>' +
+      '<span class="t-badge ' + badgeCls + '" data-toggle-id="' + esc(t.id) + '">' + badgeTxt + '</span>' +
       '<button class="t-del" data-tunnel-id="' + esc(t.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
 }
 
 document.addEventListener('click', function(e) {
+  const badge = e.target.closest('.t-badge[data-toggle-id]');
+  if (badge) { toggleTunnel(badge.dataset.toggleId); return; }
   const btn = e.target.closest('.t-del');
   if (!btn) return;
   if (btn.dataset.tunnelId)  deleteTunnel(btn.dataset.tunnelId);
@@ -902,19 +880,16 @@ document.addEventListener('click', function(e) {
   if (btn.dataset.stationId) deleteStation(btn.dataset.stationId);
 });
 
-document.addEventListener('change', function(e) {
-  const input = e.target.closest('input[data-toggle-id]');
-  if (!input) return;
-  toggleTunnel(input.dataset.toggleId);
-});
-
 async function toggleTunnel(id) {
   lastMutation = Date.now();
+  // Optimistic update: flip immediately for instant animation
+  const idx = tunnels.findIndex(function(t) { return t.id === id; });
+  if (idx !== -1) { tunnels[idx] = Object.assign({}, tunnels[idx], { enabled: tunnels[idx].enabled === false }); renderTunnels(); }
   const res = await fetch('/api/tunnels/' + id + '/toggle', { method: 'POST' });
   if (res.ok) {
     const data = await res.json();
-    const idx = tunnels.findIndex(function(t) { return t.id === id; });
-    if (idx !== -1) { tunnels[idx] = data.tunnel; renderTunnels(); }
+    const i = tunnels.findIndex(function(t) { return t.id === id; });
+    if (i !== -1) { tunnels[i] = data.tunnel; renderTunnels(); }
   }
 }
 
