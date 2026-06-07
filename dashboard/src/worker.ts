@@ -427,7 +427,26 @@ html, body {
 .empty-sm { font-size: 12px; color: var(--text-label); padding: 2px 0; }
 
 /* ── Create form ── */
-.create-card { padding: 18px; }
+.create-card { overflow: hidden; }
+
+.create-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.create-header:hover { background: rgba(255,255,255,0.03); }
+
+.create-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.32s ease;
+}
+.create-body.open { max-height: 400px; }
+.create-body-inner { padding: 0 18px 18px; border-top: 1px solid var(--border); padding-top: 16px; }
 
 .create-fields {
   display: flex;
@@ -728,43 +747,52 @@ html, body {
     </div>
 
     <div class="card create-card">
-      <div class="section-label">Create</div>
-      <div class="create-fields">
-        <div class="field">
-          <label>Edge</label>
-          <select id="form-edge"><option value="">Select...</option></select>
-        </div>
-        <div class="field">
-          <label>Station</label>
-          <select id="form-station"><option value="">Select...</option></select>
-        </div>
-        <div class="field">
-          <label>Protocol</label>
-          <select id="form-protocol">
-            <option>TCP</option><option>UDP</option><option>QUIC</option><option>HTTP</option><option>HTTPS</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>IP</label>
-          <input id="form-ip" type="text" placeholder="127.0.0.1" value="127.0.0.1" />
-        </div>
+      <div class="create-header" onclick="toggleCreate()">
+        <span class="section-label">Create Tunnel</span>
+        <svg class="nodes-arrow" id="create-arrow" viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
       </div>
-      <div class="create-fields-2">
-        <div class="field-sm">
-          <label>Port</label>
-          <input id="form-port" type="number" placeholder="8080" />
+      <div class="create-body" id="create-body">
+        <div class="create-body-inner">
+          <div class="create-fields">
+            <div class="field">
+              <label>Edge</label>
+              <select id="form-edge"><option value="">Select...</option></select>
+            </div>
+            <div class="field">
+              <label>Station</label>
+              <select id="form-station"><option value="">Select...</option></select>
+            </div>
+            <div class="field">
+              <label>Protocol</label>
+              <select id="form-protocol">
+                <option>TCP</option><option>UDP</option><option>QUIC</option><option>HTTP</option><option>HTTPS</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>IP</label>
+              <input id="form-ip" type="text" placeholder="127.0.0.1" value="127.0.0.1" />
+            </div>
+          </div>
+          <div class="create-fields-2">
+            <div class="field-sm">
+              <label>Port</label>
+              <input id="form-port" type="number" placeholder="8080" />
+            </div>
+            <div class="field-sm" style="width:96px">
+              <label>Remote Port</label>
+              <input id="form-remote-port" type="number" placeholder="13000" />
+            </div>
+            <div class="field-grow">
+              <label>Name</label>
+              <input id="form-name" type="text" placeholder="my-service" />
+            </div>
+          </div>
+          <div class="create-footer">
+            <button class="btn-create" onclick="createTunnel()">Create</button>
+          </div>
         </div>
-        <div class="field-sm" style="width:96px">
-          <label>Remote Port</label>
-          <input id="form-remote-port" type="number" placeholder="13000" />
-        </div>
-        <div class="field-grow">
-          <label>Name</label>
-          <input id="form-name" type="text" placeholder="my-service" />
-        </div>
-      </div>
-      <div class="create-footer">
-        <button class="btn-create" onclick="createTunnel()">Create</button>
       </div>
     </div>
 
@@ -788,6 +816,13 @@ function toggleNodes() {
   nodesOpen = !nodesOpen;
   document.getElementById('nodes-body').classList.toggle('open', nodesOpen);
   document.getElementById('nodes-arrow').classList.toggle('open', nodesOpen);
+}
+
+let createOpen = false;
+function toggleCreate() {
+  createOpen = !createOpen;
+  document.getElementById('create-body').classList.toggle('open', createOpen);
+  document.getElementById('create-arrow').classList.toggle('open', createOpen);
 }
 
 async function init() {
