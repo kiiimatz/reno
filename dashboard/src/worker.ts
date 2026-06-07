@@ -550,6 +550,7 @@ let edges = [];
 let stations = [];
 let tunnels = [];
 let ws = null;
+let lastMutation = 0;
 
 async function init() {
   const res = await fetch('/api/stations');
@@ -576,12 +577,16 @@ function connectWS() {
     const data = JSON.parse(e.data);
     edges    = data.edges    || [];
     stations = data.stations || [];
-    tunnels  = data.tunnels  || [];
+    // Don't overwrite local tunnel state right after a create/delete
+    // (KV may not have propagated yet); let it settle after 3 seconds
+    if (Date.now() - lastMutation > 3000) {
+      tunnels = data.tunnels || [];
+      renderTunnels();
+    }
     renderEdges();
     renderStations();
     renderEdgeSelect();
     renderStationSelect();
-    renderTunnels();
   };
   ws.onclose = function() {
     ws = null;
@@ -720,6 +725,7 @@ async function createTunnel() {
     return;
   }
 
+  lastMutation = Date.now();
   const res = await fetch('/api/tunnels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -735,20 +741,23 @@ async function createTunnel() {
   }
 }
 
-async function deleteTunnel(id) {
+function deleteTunnel(id) {
+  lastMutation = Date.now();
   tunnels = tunnels.filter(t => t.id !== id);
   renderTunnels();
   fetch('/api/tunnels/' + id, { method: 'DELETE' });
 }
 
-async function deleteEdge(id) {
+function deleteEdge(id) {
+  lastMutation = Date.now();
   edges = edges.filter(e => e.id !== id);
   renderEdges();
   renderEdgeSelect();
   fetch('/api/edges/' + id, { method: 'DELETE' });
 }
 
-async function deleteStation(id) {
+function deleteStation(id) {
+  lastMutation = Date.now();
   stations = stations.filter(s => s.id !== id);
   renderStations();
   renderStationSelect();

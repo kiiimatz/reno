@@ -667,6 +667,15 @@ func startControlServer(cfg Config) {
 
 func handleEdge(conn net.Conn, cfg Config) {
 	defer conn.Close()
+
+	// Enable TCP keepalive to detect dropped connections quickly
+	if tlsConn, ok := conn.(*tls.Conn); ok {
+		if tcpConn, ok := tlsConn.NetConn().(*net.TCPConn); ok {
+			tcpConn.SetKeepAlive(true)
+			tcpConn.SetKeepAlivePeriod(15 * time.Second)
+		}
+	}
+
 	writer := protocol.NewWriter(conn)
 
 	conn.SetDeadline(time.Now().Add(10 * time.Second))
@@ -695,14 +704,27 @@ func handleEdge(conn net.Conn, cfg Config) {
 	}()
 
 	writer.WriteControl(protocol.MsgAuthOK, protocol.AuthOKMsg{EdgeID: edgeID})
-	log.Printf("Edge %s connected", edgeID)
+	log.Printf("Edge %s connected (dashboard_id: %q)", edgeID, auth.DashboardEdgeID)
 	sendTunnelSync(edge)
 
+	// Send periodic pings to keep the connection alive through NAT/firewalls
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := writer.WriteControl(protocol.MsgPing, struct{}{}); err != nil {
+				return
+			}
+		}
+	}()
+
 	for {
+		conn.SetDeadline(time.Now().Add(60 * time.Second))
 		msg, err := protocol.ReadMessage(conn)
 		if err != nil {
 			return
 		}
+		conn.SetDeadline(time.Time{})
 		switch msg.Type {
 		case protocol.MsgChannelData:
 			tcpChannelsMu.RLock()
@@ -729,6 +751,8 @@ func handleEdge(conn net.Conn, cfg Config) {
 			closeTCPChannel(m.ChannelID)
 		case protocol.MsgPing:
 			writer.WriteControl(protocol.MsgPong, struct{}{})
+		case protocol.MsgPong:
+			// keepalive reply, nothing to do
 		}
 	}
 }
@@ -737,8 +761,9 @@ func sendTunnelSync(edge *edgeConn) {
 	tunnelsMu.RLock()
 	var t []protocol.TunnelConfig
 	for _, tc := range tunnels {
-		// Send tunnel to this edge if unassigned (legacy) or explicitly targeted
-		if tc.EdgeID == "" || tc.EdgeID == edge.dashboardEdgeID {
+		// If edge has no dashboard ID (registration failed), send all tunnels as fallback.
+		// Otherwise only send tunnels targeting this specific edge.
+		if edge.dashboardEdgeID == "" || tc.EdgeID == "" || tc.EdgeID == edge.dashboardEdgeID {
 			t = append(t, tc)
 		}
 	}
@@ -915,34 +940,40 @@ func cleanupUDPSessions() {
 	}
 }
 
+func doPollTunnels(cfg Config) {
+	if stationID == "" {
+		return
+	}
+	url := fmt.Sprintf("%s/api/stations/%s/tunnels?secret=%s", cfg.DashboardURL, stationID, cfg.APISecret)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("poll tunnels: %v", err)
+		return
+	}
+	var result struct {
+		Tunnels []protocol.TunnelConfig `json:"tunnels"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	resp.Body.Close()
+
+	tunnelsMu.Lock()
+	changed := !tunnelsEqual(tunnels, result.Tunnels)
+	tunnels = result.Tunnels
+	tunnelsMu.Unlock()
+
+	if changed {
+		log.Printf("Tunnels updated: %d tunnel(s)", len(result.Tunnels))
+		updateListeners(result.Tunnels)
+		broadcastTunnelSync()
+	}
+}
+
 func pollTunnels(cfg Config) {
+	// Poll immediately on start so tunnels are ready before any edge connects
+	doPollTunnels(cfg)
 	for {
 		time.Sleep(3 * time.Second)
-		if stationID == "" {
-			continue
-		}
-		url := fmt.Sprintf("%s/api/stations/%s/tunnels?secret=%s", cfg.DashboardURL, stationID, cfg.APISecret)
-		resp, err := http.Get(url)
-		if err != nil {
-			log.Printf("poll tunnels: %v", err)
-			continue
-		}
-		var result struct {
-			Tunnels []protocol.TunnelConfig `json:"tunnels"`
-		}
-		json.NewDecoder(resp.Body).Decode(&result)
-		resp.Body.Close()
-
-		tunnelsMu.Lock()
-		changed := !tunnelsEqual(tunnels, result.Tunnels)
-		tunnels = result.Tunnels
-		tunnelsMu.Unlock()
-
-		if changed {
-			log.Printf("Tunnels updated: %d tunnel(s)", len(result.Tunnels))
-			updateListeners(result.Tunnels)
-			broadcastTunnelSync()
-		}
+		doPollTunnels(cfg)
 	}
 }
 
@@ -1175,8 +1206,10 @@ func edgeRun(cfg Config, stationRef string) error {
 		},
 	}
 
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp",
-		fmt.Sprintf("%s:%d", host, port), tlsCfg)
+	conn, err := tls.DialWithDialer(&net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 15 * time.Second,
+	}, "tcp", fmt.Sprintf("%s:%d", host, port), tlsCfg)
 	if err != nil {
 		return fmt.Errorf("dial station: %v", err)
 	}
