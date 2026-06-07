@@ -1,5 +1,5 @@
 export interface Env {
-  RENO_KV: KVNamespace;
+  RENO_R2: R2Bucket;
   USERNAME: string;
   PASSWORD: string;
   JWT_SECRET: string;
@@ -124,27 +124,39 @@ async function cryptoEncrypt(secret: string, plaintext: string): Promise<string>
   return btoa(String.fromCharCode(...buf)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
-// --- KV state helpers ---
+// --- R2 state helpers ---
+// R2 is strongly consistent globally and has generous free limits (1M writes/month).
 
 const ONLINE_MS = 10 * 60 * 1000; // 10 minutes
 
-async function getEdges(env: Env): Promise<Edge[]> {
-  return ((await env.RENO_KV.get('edges', 'json')) as Edge[]) || [];
+interface State {
+  edges: Edge[];
+  stations: Station[];
+  tunnels: Tunnel[];
 }
-async function saveEdges(env: Env, list: Edge[]): Promise<void> {
-  await env.RENO_KV.put('edges', JSON.stringify(list));
+
+async function getState(env: Env): Promise<State> {
+  const obj = await env.RENO_R2.get('state');
+  if (!obj) return { edges: [], stations: [], tunnels: [] };
+  return await obj.json() as State;
 }
-async function getStations(env: Env): Promise<Station[]> {
-  return ((await env.RENO_KV.get('stations', 'json')) as Station[]) || [];
+
+async function saveState(env: Env, state: State): Promise<void> {
+  await env.RENO_R2.put('state', JSON.stringify(state));
 }
-async function saveStations(env: Env, list: Station[]): Promise<void> {
-  await env.RENO_KV.put('stations', JSON.stringify(list));
+
+async function getEdges(env: Env): Promise<Edge[]> { return (await getState(env)).edges; }
+async function getStations(env: Env): Promise<Station[]> { return (await getState(env)).stations; }
+async function getTunnels(env: Env): Promise<Tunnel[]> { return (await getState(env)).tunnels; }
+
+async function saveEdges(env: Env, edges: Edge[]): Promise<void> {
+  const s = await getState(env); s.edges = edges; await saveState(env, s);
 }
-async function getTunnels(env: Env): Promise<Tunnel[]> {
-  return ((await env.RENO_KV.get('tunnels', 'json')) as Tunnel[]) || [];
+async function saveStations(env: Env, stations: Station[]): Promise<void> {
+  const s = await getState(env); s.stations = stations; await saveState(env, s);
 }
-async function saveTunnels(env: Env, list: Tunnel[]): Promise<void> {
-  await env.RENO_KV.put('tunnels', JSON.stringify(list));
+async function saveTunnels(env: Env, tunnels: Tunnel[]): Promise<void> {
+  const s = await getState(env); s.tunnels = tunnels; await saveState(env, s);
 }
 
 function withStatus<T extends { lastSeen: string; status: 'online' | 'offline' }>(list: T[]): T[] {
@@ -983,9 +995,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     server.accept();
     const sendState = async () => {
       try {
-        const [edges, stations, tunnels] = await Promise.all([
-          getEdges(env), getStations(env), getTunnels(env)
-        ]);
+        const { edges, stations, tunnels } = await getState(env);
         server.send(JSON.stringify({
           edges: withStatus(edges),
           stations: withStatus(stations),
