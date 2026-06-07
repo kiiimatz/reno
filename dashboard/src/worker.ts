@@ -489,7 +489,8 @@ html, body {
 .tunnel-item:hover { background: var(--bg-secondary); }
 
 .t-name { font-size: 13px; font-weight: 500; color: var(--text-primary); font-family: var(--font-sans); }
-.t-addr { font-size: 11px; color: var(--text-tertiary); font-family: var(--font); margin-top: 2px; }
+.t-route { font-size: 11px; color: var(--text-secondary); font-family: var(--font-sans); margin-top: 1px; }
+.t-addr { font-size: 11px; color: var(--text-tertiary); font-family: var(--font); margin-top: 1px; }
 
 .t-proto {
   font-size: 10px;
@@ -836,14 +837,21 @@ function renderTunnels() {
     return;
   }
   list.innerHTML = tunnels.map(function(t) {
-    const edgeOnline   = edges.some(function(e)   { return e.id === t.edge_id    && e.status === 'online'; });
-    const stationOnline = stations.some(function(s) { return s.id === t.station_id && s.status === 'online'; });
+    const edge    = edges.find(function(e)   { return e.id === t.edge_id; });
+    const station = stations.find(function(s) { return s.id === t.station_id; });
+    const edgeOnline    = edge    && edge.status    === 'online';
+    const stationOnline = station && station.status === 'online';
     const badge = (edgeOnline && stationOnline)
       ? '<span class="t-badge active">active</span>'
       : '<span class="t-badge idle">idle</span>';
+    const edgeName    = edge    ? esc(edge.name)    : '?';
+    const stationName = station ? esc(station.name) : '?';
     return '<div class="tunnel-item">' +
-      '<div><div class="t-name">' + esc(t.name) + '</div>' +
-      '<div class="t-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div></div>' +
+      '<div>' +
+        '<div class="t-name">' + esc(t.name) + '</div>' +
+        '<div class="t-route">' + edgeName + ' \u2192 ' + stationName + '</div>' +
+        '<div class="t-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div>' +
+      '</div>' +
       '<span class="t-proto">' + esc(t.protocol) + '</span>' +
       badge +
       '<button class="t-del" data-tunnel-id="' + esc(t.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
@@ -1119,8 +1127,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === '/api/tunnels' && method === 'GET') {
     const stationFilter = url.searchParams.get('station_id');
-    const tunnels = await getTunnels(env);
-    return json({ tunnels: stationFilter ? tunnels.filter(t => t.station_id === stationFilter) : tunnels });
+    const edgeFilter = url.searchParams.get('edge_id');
+    let tunnels = await getTunnels(env);
+    if (stationFilter) tunnels = tunnels.filter(t => t.station_id === stationFilter);
+    if (edgeFilter) tunnels = tunnels.filter(t => t.edge_id === edgeFilter);
+    return json({ tunnels });
   }
 
   if (path === '/api/tunnels' && method === 'POST') {

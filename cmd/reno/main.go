@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
@@ -1256,19 +1257,80 @@ func runEdgeDaemon() {
 		os.Exit(0)
 	}()
 
-	// Use "auto" when station_id is not specified — connects to first station
-	stationRef := cfg.Edge.StationID
-	if stationRef == "" {
-		stationRef = "auto"
-	}
+	log.Printf("Reno Edge starting")
 
-	log.Printf("Reno Edge starting (station: %s)", stationRef)
+	// Connect to all stations that have tunnels for this edge.
+	// Re-check every 30s so new tunnels (and new stations) are picked up.
+	type connState struct{ cancel context.CancelFunc }
+	active := make(map[string]*connState)
+
+	for {
+		stationIDs := getStationsForEdge(cfg)
+		newSet := make(map[string]bool)
+		for _, sid := range stationIDs {
+			newSet[sid] = true
+			if _, ok := active[sid]; !ok {
+				ctx, cancel := context.WithCancel(context.Background())
+				active[sid] = &connState{cancel: cancel}
+				go runEdgeForStation(ctx, cfg, sid)
+			}
+		}
+		for sid, st := range active {
+			if !newSet[sid] {
+				st.cancel()
+				delete(active, sid)
+			}
+		}
+		time.Sleep(30 * time.Second)
+	}
+}
+
+// getStationsForEdge returns the distinct station IDs that have tunnels for this edge.
+func getStationsForEdge(cfg Config) []string {
+	if dashboardEdgeID == "" {
+		return nil
+	}
+	url := fmt.Sprintf("%s/api/tunnels?edge_id=%s&secret=%s", cfg.DashboardURL, dashboardEdgeID, cfg.APISecret)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Tunnels []protocol.TunnelConfig `json:"tunnels"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var ids []string
+	for _, t := range result.Tunnels {
+		if t.StationID != "" && !seen[t.StationID] {
+			seen[t.StationID] = true
+			ids = append(ids, t.StationID)
+		}
+	}
+	return ids
+}
+
+// runEdgeForStation maintains a persistent connection to a specific station,
+// reconnecting with backoff on failure.
+func runEdgeForStation(ctx context.Context, cfg Config, stationID string) {
 	backoff := time.Second
 	for {
-		if err := edgeRun(cfg, stationRef); err != nil {
-			log.Printf("Disconnected: %v. Reconnecting in %s...", err, backoff)
-			time.Sleep(backoff)
-			if backoff < 5*time.Second {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if err := edgeRun(cfg, stationID); err != nil {
+			log.Printf("[%s] Disconnected: %v. Reconnecting in %s...", stationID[:8], err, backoff)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < 30*time.Second {
 				backoff *= 2
 			}
 		} else {
