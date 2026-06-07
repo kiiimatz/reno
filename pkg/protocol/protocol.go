@@ -45,6 +45,9 @@ type TunnelConfig struct {
 	LocalPort  int    `json:"local_port"`
 	RemotePort int    `json:"remote_port"`
 	Protocol   string `json:"protocol"`
+	StationID  string `json:"station_id,omitempty"`
+	Status     string `json:"status,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
 }
 
 // IsUDP returns true when the tunnel uses UDP transport.

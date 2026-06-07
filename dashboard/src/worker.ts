@@ -1,5 +1,5 @@
 export interface Env {
-  RENO_KV: KVNamespace;
+  STATION_API_URL: string;  // e.g. "http://123.456.789.0:8080"
   USERNAME: string;
   PASSWORD: string;
   JWT_SECRET: string;
@@ -45,33 +45,6 @@ async function deriveKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 }
 
-async function encryptInfo(secret: string, plaintext: string): Promise<string> {
-  const key = await deriveKey(secret);
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const enc = new TextEncoder();
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: nonce },
-    key,
-    enc.encode(plaintext)
-  );
-  const combined = new Uint8Array(12 + ciphertext.byteLength);
-  combined.set(nonce);
-  combined.set(new Uint8Array(ciphertext), 12);
-  return btoa(String.fromCharCode(...combined))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-
-async function decryptInfo(secret: string, encoded: string): Promise<string> {
-  const key = await deriveKey(secret);
-  const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = b64 + '==='.slice((b64.length + 3) % 4);
-  const data = Uint8Array.from(atob(padded), c => c.charCodeAt(0));
-  const nonce = data.slice(0, 12);
-  const ciphertext = data.slice(12);
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, ciphertext);
-  return new TextDecoder().decode(plaintext);
-}
-
 // --- JWT utilities ---
 
 async function jwtSign(payload: object, secret: string): Promise<string> {
@@ -115,39 +88,6 @@ async function jwtVerify(token: string, secret: string): Promise<object | null> 
   }
 }
 
-// --- KV helpers ---
-
-async function getEdges(kv: KVNamespace): Promise<Edge[]> {
-  const data = await kv.get('edges');
-  return data ? JSON.parse(data) : [];
-}
-
-async function saveEdges(kv: KVNamespace, edges: Edge[]): Promise<void> {
-  await kv.put('edges', JSON.stringify(edges));
-}
-
-async function getStations(kv: KVNamespace): Promise<Station[]> {
-  const data = await kv.get('stations');
-  return data ? JSON.parse(data) : [];
-}
-
-async function saveStations(kv: KVNamespace, stations: Station[]): Promise<void> {
-  await kv.put('stations', JSON.stringify(stations));
-}
-
-async function getTunnels(kv: KVNamespace): Promise<Tunnel[]> {
-  const data = await kv.get('tunnels');
-  return data ? JSON.parse(data) : [];
-}
-
-async function saveTunnels(kv: KVNamespace, tunnels: Tunnel[]): Promise<void> {
-  await kv.put('tunnels', JSON.stringify(tunnels));
-}
-
-function generateId(): string {
-  return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
-}
-
 // --- Auth middleware ---
 
 async function requireAuth(request: Request, env: Env): Promise<string | null> {
@@ -168,6 +108,27 @@ function json(data: unknown, status = 200): Response {
 
 function unauthorized(): Response {
   return json({ error: 'unauthorized' }, 401);
+}
+
+// --- Proxy to station ---
+
+async function proxyToStation(request: Request, env: Env, path: string, query: string): Promise<Response> {
+  const targetUrl = env.STATION_API_URL + path + (query ? '?' + query : '');
+  const headers = new Headers(request.headers);
+  headers.set('X-Reno-Secret', env.API_SECRET);
+  headers.delete('Host');
+  return fetch(targetUrl, {
+    method: request.method,
+    headers,
+    body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
+  });
+}
+
+function isPublicApiPath(path: string, method: string): boolean {
+  return path === '/api/edges/register' ||
+    path === '/api/stations/register' ||
+    /^\/api\/(edges|stations)\/[^/]+\/(heartbeat|offline|connect)$/.test(path) ||
+    (path === '/api/tunnels' && method === 'GET');
 }
 
 // --- Dashboard HTML ---
@@ -725,8 +686,7 @@ function connectWS() {
     const data = JSON.parse(e.data);
     edges    = data.edges    || [];
     stations = data.stations || [];
-    // Only overwrite tunnel list after 60s guard (Cloudflare KV eventual consistency
-    // can take up to ~60s to propagate across PoPs — guard prevents stale data from
+    // Only overwrite tunnel list after 60s guard (prevents stale data from
     // wiping out tunnels we just created/deleted).
     if (Date.now() - lastMutation > 60000) {
       tunnels = data.tunnels || [];
@@ -961,7 +921,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       });
     }
 
-    // Auth routes
+    // Auth routes — handled locally, no proxy
     if (path === '/api/auth/login' && method === 'POST') {
       const body = await request.json() as { username: string; password: string };
       if (body.username !== env.USERNAME || body.password !== env.PASSWORD) {
@@ -998,20 +958,13 @@ async function handle(request: Request, env: Env): Promise<Response> {
       server.accept();
 
       const sendState = async () => {
-        const [edgeList, stationList, tunnelList] = await Promise.all([
-          getEdges(env.RENO_KV),
-          getStations(env.RENO_KV),
-          getTunnels(env.RENO_KV),
-        ]);
-        const now = Date.now();
-        for (const e of edgeList) {
-          if (now - new Date(e.lastSeen).getTime() > 45000) e.status = 'offline';
-        }
-        for (const s of stationList) {
-          if (now - new Date(s.lastSeen).getTime() > 45000) s.status = 'offline';
-        }
         try {
-          server.send(JSON.stringify({ edges: edgeList, stations: stationList, tunnels: tunnelList }));
+          const resp = await fetch(`${env.STATION_API_URL}/api/state`, {
+            headers: { 'X-Reno-Secret': env.API_SECRET }
+          });
+          if (!resp.ok) return;
+          const state = await resp.json() as { edges: Edge[]; stations: Station[]; tunnels: Tunnel[] };
+          server.send(JSON.stringify(state));
         } catch {}
       };
 
@@ -1022,278 +975,16 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return new Response(null, { status: 101, webSocket: client } as ResponseInit);
     }
 
-    // Edge register (uses API_SECRET)
-    if (path === '/api/edges/register' && method === 'POST') {
-      const body = await request.json() as { name: string; secret: string };
-      if (body.secret !== env.API_SECRET) return unauthorized();
-
-      const edges = await getEdges(env.RENO_KV);
-      const existing = edges.find(e => e.name === body.name);
-
-      let edgeId: string;
-      if (existing) {
-        edgeId = existing.id;
-        const msSince = Date.now() - new Date(existing.lastSeen).getTime();
-        if (msSince > 30000 || existing.status !== 'online') {
-          existing.lastSeen = new Date().toISOString();
-          existing.status = 'online';
-          await saveEdges(env.RENO_KV, edges);
-        }
-      } else {
-        edgeId = generateId();
-        edges.push({
-          id: edgeId,
-          name: body.name,
-          registeredAt: new Date().toISOString(),
-          lastSeen: new Date().toISOString(),
-          status: 'online',
-        });
-        await saveEdges(env.RENO_KV, edges);
-      }
-
-      return json({ edge_id: edgeId });
+    // Public API paths — proxy directly with API_SECRET (no JWT required)
+    if (path.startsWith('/api/') && isPublicApiPath(path, method)) {
+      return proxyToStation(request, env, path, url.search.slice(1));
     }
 
-    // Edge offline (uses API_SECRET)
-    const edgeOfflineMatch = path.match(/^\/api\/edges\/([^/]+)\/offline$/);
-    if (edgeOfflineMatch && method === 'POST') {
-      const secret = url.searchParams.get('secret');
-      if (secret !== env.API_SECRET) return unauthorized();
-
-      const edgeId = edgeOfflineMatch[1];
-      const edges = await getEdges(env.RENO_KV);
-      const edge = edges.find(e => e.id === edgeId);
-      if (edge) {
-        edge.status = 'offline';
-        await saveEdges(env.RENO_KV, edges);
-      }
-      return json({ ok: true });
-    }
-
-    // Edge heartbeat (uses API_SECRET)
-    const edgeHeartbeatMatch = path.match(/^\/api\/edges\/([^/]+)\/heartbeat$/);
-    if (edgeHeartbeatMatch && method === 'POST') {
-      const secret = url.searchParams.get('secret');
-      if (secret !== env.API_SECRET) return unauthorized();
-
-      const edgeId = edgeHeartbeatMatch[1];
-      const edges = await getEdges(env.RENO_KV);
-      const edge = edges.find(e => e.id === edgeId);
-      if (edge) {
-        const msSince = Date.now() - new Date(edge.lastSeen).getTime();
-        // Only write to KV every 30s to stay within daily write limits
-        if (msSince > 30000 || edge.status !== 'online') {
-          edge.lastSeen = new Date().toISOString();
-          edge.status = 'online';
-          await saveEdges(env.RENO_KV, edges);
-        }
-      }
-
-      return json({ ok: true });
-    }
-
-    // Station register (uses API_SECRET, not JWT)
-    if (path === '/api/stations/register' && method === 'POST') {
-      const body = await request.json() as {
-        name: string; control_port: number; cert_fingerprint: string; secret: string; ip: string;
-      };
-      if (body.secret !== env.API_SECRET) return unauthorized();
-
-      const stations = await getStations(env.RENO_KV);
-      const existing = stations.find(s => s.name === body.name);
-
-      let stationId: string;
-      if (existing) {
-        stationId = existing.id;
-        existing.controlPort = body.control_port;
-        existing.certFingerprint = body.cert_fingerprint;
-        const msSince = Date.now() - new Date(existing.lastSeen).getTime();
-        if (msSince > 30000 || existing.status !== 'online') {
-          existing.lastSeen = new Date().toISOString();
-          existing.status = 'online';
-          await saveStations(env.RENO_KV, stations);
-        }
-      } else {
-        stationId = generateId();
-        stations.push({
-          id: stationId,
-          name: body.name,
-          controlPort: body.control_port,
-          certFingerprint: body.cert_fingerprint,
-          registeredAt: new Date().toISOString(),
-          lastSeen: new Date().toISOString(),
-          status: 'online',
-        });
-        await saveStations(env.RENO_KV, stations);
-      }
-
-      const encryptedInfo = await encryptInfo(
-        env.API_SECRET,
-        `${body.ip}:${body.control_port}:${body.cert_fingerprint}`
-      );
-      await env.RENO_KV.put(`station_info:${stationId}`, encryptedInfo);
-
-      return json({ station_id: stationId });
-    }
-
-    // Station connect info (for Edge, uses API_SECRET)
-    const connectMatch = path.match(/^\/api\/stations\/([^/]+)\/connect$/);
-    if (connectMatch && method === 'GET') {
-      const secret = url.searchParams.get('secret');
-      if (secret !== env.API_SECRET) return unauthorized();
-
-      let stationId = connectMatch[1];
-      if (stationId === 'auto') {
-        const stations = await getStations(env.RENO_KV);
-        if (!stations.length) return json({ error: 'no stations registered' }, 404);
-        stationId = stations[0].id;
-      }
-
-      const encryptedInfo = await env.RENO_KV.get(`station_info:${stationId}`);
-      if (!encryptedInfo) return json({ error: 'station not found' }, 404);
-
-      return json({ encrypted_info: encryptedInfo, station_id: stationId });
-    }
-
-    // Station tunnels (for Station polling, uses API_SECRET)
-    const tunnelsForStationMatch = path.match(/^\/api\/stations\/([^/]+)\/tunnels$/);
-    if (tunnelsForStationMatch && method === 'GET') {
-      const secret = url.searchParams.get('secret');
-      if (secret !== env.API_SECRET) return unauthorized();
-
-      const stationId = tunnelsForStationMatch[1];
-      const allTunnels = await getTunnels(env.RENO_KV);
-      const stationTunnels = allTunnels.filter(t => t.station_id === stationId);
-
-      return json({ tunnels: stationTunnels });
-    }
-
-    // Station offline (uses API_SECRET)
-    const stationOfflineMatch = path.match(/^\/api\/stations\/([^/]+)\/offline$/);
-    if (stationOfflineMatch && method === 'POST') {
-      const secret = url.searchParams.get('secret');
-      if (secret !== env.API_SECRET) return unauthorized();
-
-      const stationId = stationOfflineMatch[1];
-      const stations = await getStations(env.RENO_KV);
-      const station = stations.find(s => s.id === stationId);
-      if (station) {
-        station.status = 'offline';
-        await saveStations(env.RENO_KV, stations);
-      }
-      return json({ ok: true });
-    }
-
-    // Station heartbeat (uses API_SECRET)
-    const heartbeatMatch = path.match(/^\/api\/stations\/([^/]+)\/heartbeat$/);
-    if (heartbeatMatch && method === 'POST') {
-      const secret = url.searchParams.get('secret');
-      if (secret !== env.API_SECRET) return unauthorized();
-
-      const stationId = heartbeatMatch[1];
-      const [stations, tunnels] = await Promise.all([
-        getStations(env.RENO_KV),
-        getTunnels(env.RENO_KV),
-      ]);
-      const station = stations.find(s => s.id === stationId);
-      if (station) {
-        const msSince = Date.now() - new Date(station.lastSeen).getTime();
-        // Only write to KV every 30s to stay within daily write limits
-        if (msSince > 30000 || station.status !== 'online') {
-          station.lastSeen = new Date().toISOString();
-          station.status = 'online';
-          await saveStations(env.RENO_KV, stations);
-        }
-      }
-
-      // Return tunnel list so station can sync immediately without a separate poll
-      return json({ ok: true, tunnels });
-    }
-
-    // Require auth for remaining routes
-    const authed = await requireAuth(request, env);
-    if (!authed) return unauthorized();
-
-    // GET /api/edges
-    if (path === '/api/edges' && method === 'GET') {
-      const edges = await getEdges(env.RENO_KV);
-      const now = Date.now();
-      for (const e of edges) {
-        if (now - new Date(e.lastSeen).getTime() > 35000) {
-          e.status = 'offline';
-        }
-      }
-      return json({ edges });
-    }
-
-    // DELETE /api/edges/:id
-    const deleteEdgeMatch = path.match(/^\/api\/edges\/([^/]+)$/);
-    if (deleteEdgeMatch && method === 'DELETE') {
-      const id = deleteEdgeMatch[1];
-      const edges = await getEdges(env.RENO_KV);
-      await saveEdges(env.RENO_KV, edges.filter(e => e.id !== id));
-      return json({ ok: true });
-    }
-
-    // GET /api/stations
-    if (path === '/api/stations' && method === 'GET') {
-      const stations = await getStations(env.RENO_KV);
-      const now = Date.now();
-      for (const s of stations) {
-        if (now - new Date(s.lastSeen).getTime() > 35000) {
-          s.status = 'offline';
-        }
-      }
-      return json({ stations });
-    }
-
-    // DELETE /api/stations/:id
-    const deleteStationMatch = path.match(/^\/api\/stations\/([^/]+)$/);
-    if (deleteStationMatch && method === 'DELETE') {
-      const id = deleteStationMatch[1];
-      const stations = await getStations(env.RENO_KV);
-      await saveStations(env.RENO_KV, stations.filter(s => s.id !== id));
-      await env.RENO_KV.delete(`station_info:${id}`);
-      return json({ ok: true });
-    }
-
-    // GET /api/tunnels
-    if (path === '/api/tunnels' && method === 'GET') {
-      return json({ tunnels: await getTunnels(env.RENO_KV) });
-    }
-
-    // POST /api/tunnels
-    if (path === '/api/tunnels' && method === 'POST') {
-      const body = await request.json() as {
-        edge_id: string; station_id: string; name: string;
-        protocol: 'TCP' | 'UDP' | 'QUIC' | 'HTTP' | 'HTTPS';
-        local_host: string; local_port: number; remote_port: number;
-      };
-      const tunnel: Tunnel = {
-        id: generateId(),
-        edge_id: body.edge_id,
-        station_id: body.station_id,
-        name: body.name,
-        protocol: body.protocol || 'TCP',
-        local_host: body.local_host || '127.0.0.1',
-        local_port: body.local_port,
-        remote_port: body.remote_port,
-        status: 'idle',
-        created_at: new Date().toISOString(),
-      };
-      const tunnels = await getTunnels(env.RENO_KV);
-      tunnels.push(tunnel);
-      await saveTunnels(env.RENO_KV, tunnels);
-      return json({ tunnel });
-    }
-
-    // DELETE /api/tunnels/:id
-    const deleteTunnelMatch = path.match(/^\/api\/tunnels\/([^/]+)$/);
-    if (deleteTunnelMatch && method === 'DELETE') {
-      const id = deleteTunnelMatch[1];
-      const tunnels = await getTunnels(env.RENO_KV);
-      await saveTunnels(env.RENO_KV, tunnels.filter(t => t.id !== id));
-      return json({ ok: true });
+    // All remaining API routes require JWT auth, then proxy
+    if (path.startsWith('/api/')) {
+      const authed = await requireAuth(request, env);
+      if (!authed) return unauthorized();
+      return proxyToStation(request, env, path, url.search.slice(1));
     }
 
     return new Response('Not Found', { status: 404 });

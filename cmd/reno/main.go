@@ -49,6 +49,7 @@ type Config struct {
 type StationConfig struct {
 	Name        string `json:"name"`
 	ControlPort int    `json:"control_port"`
+	APIPort     int    `json:"api_port"` // default 8080
 }
 
 type EdgeConfig struct {
@@ -464,6 +465,24 @@ func cryptoDecrypt(secret, encoded string) (string, error) {
 	return string(plain), nil
 }
 
+func cryptoEncrypt(secret, plaintext string) (string, error) {
+	key := deriveKey(secret)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	return base64.RawURLEncoding.EncodeToString(ciphertext), nil
+}
+
 // ─── Station globals ──────────────────────────────────────────────────────────
 
 var (
@@ -493,6 +512,22 @@ var (
 	udpListeners   = make(map[string]net.PacketConn)
 )
 
+// DashEdge represents a registered edge in the dashboard state.
+type DashEdge struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	RegisteredAt string `json:"registeredAt"`
+	LastSeen     string `json:"lastSeen"`
+	Status       string `json:"status"`
+}
+
+var (
+	dashEdgesMu sync.RWMutex
+	dashEdges   = make(map[string]*DashEdge)
+
+	stationRegisteredAt string
+)
+
 type edgeConn struct {
 	id              string
 	dashboardEdgeID string
@@ -513,15 +548,414 @@ type udpReturn struct {
 
 // ─── Station daemon ───────────────────────────────────────────────────────────
 
-func markStationOffline(cfg Config) {
+func stateDir() string {
+	return filepath.Dir(configPath())
+}
+
+func saveEdgesState() {
+	dashEdgesMu.RLock()
+	list := make([]*DashEdge, 0, len(dashEdges))
+	for _, e := range dashEdges {
+		list = append(list, e)
+	}
+	dashEdgesMu.RUnlock()
+	data, _ := json.MarshalIndent(list, "", "  ")
+	os.WriteFile(filepath.Join(stateDir(), "edges.json"), data, 0600)
+}
+
+func saveTunnelsState() {
+	tunnelsMu.RLock()
+	data, _ := json.MarshalIndent(tunnels, "", "  ")
+	tunnelsMu.RUnlock()
+	os.WriteFile(filepath.Join(stateDir(), "tunnels.json"), data, 0600)
+}
+
+func initStation(cfg Config) {
+	dir := stateDir()
+	os.MkdirAll(dir, 0700)
+
+	// Load or generate station ID
+	idFile := filepath.Join(dir, "station_id")
+	if data, err := os.ReadFile(idFile); err == nil {
+		stationID = strings.TrimSpace(string(data))
+	}
 	if stationID == "" {
-		return
+		stationID = generateID()
+		os.WriteFile(idFile, []byte(stationID), 0600)
 	}
-	url := fmt.Sprintf("%s/api/stations/%s/offline?secret=%s", cfg.DashboardURL, stationID, cfg.APISecret)
-	resp, err := http.Post(url, "application/json", nil)
-	if err == nil {
-		resp.Body.Close()
+	stationRegisteredAt = time.Now().Format(time.RFC3339)
+	log.Printf("Station ID: %s", stationID)
+
+	// Load edges
+	if data, err := os.ReadFile(filepath.Join(dir, "edges.json")); err == nil {
+		var list []*DashEdge
+		if json.Unmarshal(data, &list) == nil {
+			dashEdgesMu.Lock()
+			for _, e := range list {
+				dashEdges[e.ID] = e
+			}
+			dashEdgesMu.Unlock()
+		}
 	}
+
+	// Load tunnels
+	if data, err := os.ReadFile(filepath.Join(dir, "tunnels.json")); err == nil {
+		var list []protocol.TunnelConfig
+		if json.Unmarshal(data, &list) == nil {
+			tunnelsMu.Lock()
+			tunnels = list
+			tunnelsMu.Unlock()
+			log.Printf("Loaded %d tunnel(s) from disk", len(list))
+		}
+	}
+}
+
+func checkDashAPIAuth(r *http.Request, secret string) bool {
+	if r.URL.Query().Get("secret") == secret {
+		return true
+	}
+	if r.Header.Get("X-Reno-Secret") == secret {
+		return true
+	}
+	return false
+}
+
+func startDashAPI(cfg Config) {
+	apiPort := cfg.Station.APIPort
+	if apiPort == 0 {
+		apiPort = 8080
+	}
+
+	mux := http.NewServeMux()
+
+	// GET /api/state
+	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDashAPIAuth(r, cfg.APISecret) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		now := time.Now()
+		dashEdgesMu.RLock()
+		edgeList := make([]*DashEdge, 0, len(dashEdges))
+		for _, e := range dashEdges {
+			ec := *e
+			if now.Sub(mustParseTime(e.LastSeen)) > 45*time.Second {
+				ec.Status = "offline"
+			}
+			edgeList = append(edgeList, &ec)
+		}
+		dashEdgesMu.RUnlock()
+
+		tunnelsMu.RLock()
+		tList := append([]protocol.TunnelConfig{}, tunnels...)
+		tunnelsMu.RUnlock()
+
+		station := map[string]interface{}{
+			"id":              stationID,
+			"name":            cfg.Station.Name,
+			"controlPort":     cfg.Station.ControlPort,
+			"certFingerprint": certFP,
+			"registeredAt":    stationRegisteredAt,
+			"lastSeen":        now.Format(time.RFC3339),
+			"status":          "online",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"edges":    edgeList,
+			"stations": []interface{}{station},
+			"tunnels":  tList,
+		})
+	})
+
+	// POST /api/stations/register — backward compat
+	mux.HandleFunc("/api/stations/register", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		if !checkDashAPIAuth(r, cfg.APISecret) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"station_id": stationID})
+	})
+
+	// /api/stations/{id}/heartbeat, /api/stations/{id}/offline, /api/stations/{id}/connect
+	mux.HandleFunc("/api/stations/", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDashAPIAuth(r, cfg.APISecret) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		path := r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+
+		if m := matchPath(path, `/api/stations/`, `/heartbeat`); m != "" {
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			tunnelsMu.RLock()
+			tList := append([]protocol.TunnelConfig{}, tunnels...)
+			tunnelsMu.RUnlock()
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true, "station_id": stationID, "tunnels": tList,
+			})
+			return
+		}
+
+		if m := matchPath(path, `/api/stations/`, `/offline`); m != "" {
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+			return
+		}
+
+		if m := matchPath(path, `/api/stations/`, `/connect`); m != "" {
+			if r.Method != http.MethodGet {
+				http.NotFound(w, r)
+				return
+			}
+			ip := getPublicIP()
+			plain := fmt.Sprintf("%s:%d:%s", ip, cfg.Station.ControlPort, certFP)
+			encrypted, err := cryptoEncrypt(cfg.APISecret, plain)
+			if err != nil {
+				http.Error(w, `{"error":"encrypt failed"}`, http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]string{
+				"encrypted_info": encrypted,
+				"station_id":     stationID,
+			})
+			return
+		}
+
+		// DELETE /api/stations/:id
+		if r.Method == http.MethodDelete {
+			json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+			return
+		}
+
+		http.NotFound(w, r)
+	})
+
+	// /api/edges/register and /api/edges/{id}/...
+	mux.HandleFunc("/api/edges/", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDashAPIAuth(r, cfg.APISecret) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		path := r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+
+		if path == "/api/edges/register" {
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			var body struct {
+				Name   string `json:"name"`
+				Secret string `json:"secret"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			now := time.Now().Format(time.RFC3339)
+
+			dashEdgesMu.Lock()
+			var edgeID string
+			for _, e := range dashEdges {
+				if e.Name == body.Name {
+					edgeID = e.ID
+					e.LastSeen = now
+					e.Status = "online"
+					break
+				}
+			}
+			if edgeID == "" {
+				edgeID = generateID()
+				dashEdges[edgeID] = &DashEdge{
+					ID:           edgeID,
+					Name:         body.Name,
+					RegisteredAt: now,
+					LastSeen:     now,
+					Status:       "online",
+				}
+			}
+			dashEdgesMu.Unlock()
+			saveEdgesState()
+			json.NewEncoder(w).Encode(map[string]string{"edge_id": edgeID})
+			return
+		}
+
+		// GET /api/edges (no trailing segment)
+		if path == "/api/edges" {
+			if r.Method != http.MethodGet {
+				http.NotFound(w, r)
+				return
+			}
+			now := time.Now()
+			dashEdgesMu.RLock()
+			list := make([]*DashEdge, 0, len(dashEdges))
+			for _, e := range dashEdges {
+				ec := *e
+				if now.Sub(mustParseTime(e.LastSeen)) > 45*time.Second {
+					ec.Status = "offline"
+				}
+				list = append(list, &ec)
+			}
+			dashEdgesMu.RUnlock()
+			json.NewEncoder(w).Encode(map[string]interface{}{"edges": list})
+			return
+		}
+
+		if m := matchPath(path, `/api/edges/`, `/heartbeat`); m != "" {
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			now := time.Now().Format(time.RFC3339)
+			dashEdgesMu.Lock()
+			if e, ok := dashEdges[m]; ok {
+				e.LastSeen = now
+				e.Status = "online"
+			}
+			dashEdgesMu.Unlock()
+			saveEdgesState()
+			tunnelsMu.RLock()
+			tList := append([]protocol.TunnelConfig{}, tunnels...)
+			tunnelsMu.RUnlock()
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "tunnels": tList})
+			return
+		}
+
+		if m := matchPath(path, `/api/edges/`, `/offline`); m != "" {
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			dashEdgesMu.Lock()
+			if e, ok := dashEdges[m]; ok {
+				e.Status = "offline"
+			}
+			dashEdgesMu.Unlock()
+			saveEdgesState()
+			json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+			return
+		}
+
+		// DELETE /api/edges/:id
+		if r.Method == http.MethodDelete {
+			// Extract ID from path /api/edges/{id}
+			parts := strings.Split(strings.TrimPrefix(path, "/api/edges/"), "/")
+			if len(parts) == 1 && parts[0] != "" {
+				dashEdgesMu.Lock()
+				delete(dashEdges, parts[0])
+				dashEdgesMu.Unlock()
+				saveEdgesState()
+				json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+				return
+			}
+		}
+
+		http.NotFound(w, r)
+	})
+
+	// /api/tunnels and /api/tunnels/{id}
+	mux.HandleFunc("/api/tunnels", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDashAPIAuth(r, cfg.APISecret) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method == http.MethodGet {
+			tunnelsMu.RLock()
+			tList := append([]protocol.TunnelConfig{}, tunnels...)
+			tunnelsMu.RUnlock()
+			json.NewEncoder(w).Encode(map[string]interface{}{"tunnels": tList})
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			var body protocol.TunnelConfig
+			json.NewDecoder(r.Body).Decode(&body)
+			if body.ID == "" {
+				body.ID = generateID()
+			}
+			if body.CreatedAt == "" {
+				body.CreatedAt = time.Now().Format(time.RFC3339)
+			}
+			if body.Status == "" {
+				body.Status = "idle"
+			}
+			tunnelsMu.Lock()
+			tunnels = append(tunnels, body)
+			cur := append([]protocol.TunnelConfig{}, tunnels...)
+			tunnelsMu.Unlock()
+			saveTunnelsState()
+			updateListeners(cur)
+			broadcastTunnelSync()
+			json.NewEncoder(w).Encode(map[string]interface{}{"tunnel": body})
+			return
+		}
+
+		http.NotFound(w, r)
+	})
+
+	mux.HandleFunc("/api/tunnels/", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDashAPIAuth(r, cfg.APISecret) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method == http.MethodDelete {
+			id := strings.TrimPrefix(r.URL.Path, "/api/tunnels/")
+			tunnelsMu.Lock()
+			newList := tunnels[:0]
+			for _, t := range tunnels {
+				if t.ID != id {
+					newList = append(newList, t)
+				}
+			}
+			tunnels = newList
+			cur := append([]protocol.TunnelConfig{}, tunnels...)
+			tunnelsMu.Unlock()
+			saveTunnelsState()
+			updateListeners(cur)
+			broadcastTunnelSync()
+			json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+			return
+		}
+
+		http.NotFound(w, r)
+	})
+
+	addr := fmt.Sprintf(":%d", apiPort)
+	log.Printf("Station API listening on %s", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Printf("API server error: %v", err)
+	}
+}
+
+// matchPath checks if path starts with prefix and ends with suffix,
+// returning the segment in between (or "" if no match).
+func matchPath(path, prefix, suffix string) string {
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	mid := path[len(prefix) : len(path)-len(suffix)]
+	if mid == "" || strings.Contains(mid, "/") {
+		return ""
+	}
+	return mid
+}
+
+func mustParseTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	return t
 }
 
 func runStationDaemon() {
@@ -532,25 +966,27 @@ func runStationDaemon() {
 	if cfg.APISecret == "" {
 		log.Fatal("api_secret is not set in config")
 	}
-	if cfg.DashboardURL == "" {
-		log.Fatal("dashboard_url is not set in config")
-	}
 	if cfg.Station.ControlPort == 0 {
 		cfg.Station.ControlPort = 7000
 	}
 
 	setupTLS()
-	registerStation(cfg)
-	go pollTunnels(cfg)
-	go heartbeat(cfg)
+	initStation(cfg)
+	go startDashAPI(cfg)
 	go cleanupUDPSessions()
+
+	tunnelsMu.RLock()
+	cur := append([]protocol.TunnelConfig{}, tunnels...)
+	tunnelsMu.RUnlock()
+	if len(cur) > 0 {
+		updateListeners(cur)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sigCh
-		log.Printf("Shutting down, marking station offline...")
-		markStationOffline(cfg)
+		log.Printf("Shutting down station...")
 		os.Exit(0)
 	}()
 
@@ -608,43 +1044,6 @@ func computeFingerprint() {
 	certFP = hex.EncodeToString(fp[:])
 }
 
-func registerStation(cfg Config) {
-	ip := getPublicIP()
-	body := map[string]interface{}{
-		"name":             cfg.Station.Name,
-		"control_port":     cfg.Station.ControlPort,
-		"cert_fingerprint": certFP,
-		"secret":           cfg.APISecret,
-		"ip":               ip,
-	}
-	data, _ := json.Marshal(body)
-	for {
-		resp, err := http.Post(cfg.DashboardURL+"/api/stations/register", "application/json", bytes.NewReader(data))
-		if err != nil {
-			log.Printf("register: %v — retrying in 5s", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		var result struct {
-			StationID string `json:"station_id"`
-		}
-		if err := json.Unmarshal(bodyBytes, &result); err != nil {
-			log.Printf("decode register (HTTP %d body=%q): %v — retrying in 5s", resp.StatusCode, string(bodyBytes), err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		if result.StationID == "" {
-			log.Printf("register returned empty station_id (HTTP %d body=%q) — retrying in 5s", resp.StatusCode, string(bodyBytes))
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		stationID = result.StationID
-		log.Printf("Registered as station %s (name: %s, ip: %s)", stationID, cfg.Station.Name, ip)
-		return
-	}
-}
 
 func getPublicIP() string {
 	resp, err := http.Get("https://api.ipify.org")
@@ -953,43 +1352,6 @@ func cleanupUDPSessions() {
 	}
 }
 
-func doPollTunnels(cfg Config) {
-	if stationID == "" {
-		return
-	}
-	url := fmt.Sprintf("%s/api/stations/%s/tunnels?secret=%s", cfg.DashboardURL, stationID, cfg.APISecret)
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Printf("poll tunnels: %v", err)
-		return
-	}
-	var result struct {
-		Tunnels []protocol.TunnelConfig `json:"tunnels"`
-	}
-	json.NewDecoder(resp.Body).Decode(&result)
-	resp.Body.Close()
-
-	tunnelsMu.Lock()
-	changed := !tunnelsEqual(tunnels, result.Tunnels)
-	tunnels = result.Tunnels
-	tunnelsMu.Unlock()
-
-	if changed {
-		log.Printf("Tunnels updated: %d tunnel(s)", len(result.Tunnels))
-		updateListeners(result.Tunnels)
-		broadcastTunnelSync()
-	}
-}
-
-func pollTunnels(cfg Config) {
-	// Poll immediately on start so tunnels are ready before any edge connects
-	doPollTunnels(cfg)
-	for {
-		// Heartbeat already syncs tunnels every 5s; this is just a fallback
-		time.Sleep(30 * time.Second)
-		doPollTunnels(cfg)
-	}
-}
 
 func tunnelsEqual(a, b []protocol.TunnelConfig) bool {
 	if len(a) != len(b) {
@@ -1044,44 +1406,6 @@ func updateListeners(newTunnels []protocol.TunnelConfig) {
 	}
 }
 
-func heartbeat(cfg Config) {
-	doHeartbeat := func() {
-		if stationID == "" {
-			return
-		}
-		url := fmt.Sprintf("%s/api/stations/%s/heartbeat?secret=%s", cfg.DashboardURL, stationID, cfg.APISecret)
-		resp, err := http.Post(url, "application/json", nil)
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
-		// Heartbeat response includes current tunnel list for immediate sync
-		var result struct {
-			Tunnels []protocol.TunnelConfig `json:"tunnels"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return
-		}
-		if result.Tunnels == nil {
-			return
-		}
-		tunnelsMu.Lock()
-		changed := !tunnelsEqual(tunnels, result.Tunnels)
-		tunnels = result.Tunnels
-		tunnelsMu.Unlock()
-		if changed {
-			log.Printf("Tunnels updated via heartbeat: %d tunnel(s)", len(result.Tunnels))
-			updateListeners(result.Tunnels)
-			broadcastTunnelSync()
-		}
-	}
-	// Send immediately on startup so dashboard shows online right away
-	doHeartbeat()
-	for {
-		time.Sleep(5 * time.Second)
-		doHeartbeat()
-	}
-}
 
 func generateID() string {
 	b := make([]byte, 8)
