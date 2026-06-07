@@ -1,5 +1,5 @@
 export interface Env {
-  STATION_API_URL: string;  // e.g. "http://123.456.789.0:8080"
+  RENO_KV: KVNamespace;
   USERNAME: string;
   PASSWORD: string;
   JWT_SECRET: string;
@@ -19,6 +19,7 @@ interface Station {
   name: string;
   controlPort: number;
   certFingerprint: string;
+  host: string;
   registeredAt: string;
   lastSeen: string;
   status: 'online' | 'offline';
@@ -110,25 +111,54 @@ function unauthorized(): Response {
   return json({ error: 'unauthorized' }, 401);
 }
 
-// --- Proxy to station ---
+// --- AES-GCM encrypt (compatible with Go's cryptoDecrypt) ---
 
-async function proxyToStation(request: Request, env: Env, path: string, query: string): Promise<Response> {
-  const targetUrl = env.STATION_API_URL + path + (query ? '?' + query : '');
-  const headers = new Headers(request.headers);
-  headers.set('X-Reno-Secret', env.API_SECRET);
-  headers.delete('Host');
-  return fetch(targetUrl, {
-    method: request.method,
-    headers,
-    body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
-  });
+async function cryptoEncrypt(secret: string, plaintext: string): Promise<string> {
+  const key = await deriveKey(secret);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder().encode(plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc);
+  const buf = new Uint8Array(12 + ciphertext.byteLength);
+  buf.set(iv, 0);
+  buf.set(new Uint8Array(ciphertext), 12);
+  return btoa(String.fromCharCode(...buf)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
-function isPublicApiPath(path: string, method: string): boolean {
-  return path === '/api/edges/register' ||
-    path === '/api/stations/register' ||
-    /^\/api\/(edges|stations)\/[^/]+\/(heartbeat|offline|connect)$/.test(path) ||
-    (path === '/api/tunnels' && method === 'GET');
+// --- KV state helpers ---
+
+const ONLINE_MS = 10 * 60 * 1000; // 10 minutes
+
+async function getEdges(env: Env): Promise<Edge[]> {
+  return ((await env.RENO_KV.get('edges', 'json')) as Edge[]) || [];
+}
+async function saveEdges(env: Env, list: Edge[]): Promise<void> {
+  await env.RENO_KV.put('edges', JSON.stringify(list));
+}
+async function getStations(env: Env): Promise<Station[]> {
+  return ((await env.RENO_KV.get('stations', 'json')) as Station[]) || [];
+}
+async function saveStations(env: Env, list: Station[]): Promise<void> {
+  await env.RENO_KV.put('stations', JSON.stringify(list));
+}
+async function getTunnels(env: Env): Promise<Tunnel[]> {
+  return ((await env.RENO_KV.get('tunnels', 'json')) as Tunnel[]) || [];
+}
+async function saveTunnels(env: Env, list: Tunnel[]): Promise<void> {
+  await env.RENO_KV.put('tunnels', JSON.stringify(list));
+}
+
+function withStatus<T extends { lastSeen: string; status: 'online' | 'offline' }>(list: T[]): T[] {
+  const now = Date.now();
+  return list.map(item => ({
+    ...item,
+    status: (now - new Date(item.lastSeen).getTime()) < ONLINE_MS ? 'online' as const : 'offline' as const,
+  }));
+}
+
+function generateId(): string {
+  const arr = new Uint8Array(8);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // --- Dashboard HTML ---
@@ -905,87 +935,205 @@ export default {
 };
 
 async function handle(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const method = request.method;
+  const qs = url.searchParams.get('secret') || '';
+  const hdr = request.headers.get('X-Reno-Secret') || '';
+  const secretOk = env.API_SECRET !== '' && (qs === env.API_SECRET || hdr === env.API_SECRET);
 
-    // Favicon — no auth needed
-    if (method === 'GET' && path === '/favicon.ico') {
-      return new Response(null, { status: 204 });
-    }
+  // favicon
+  if (method === 'GET' && path === '/favicon.ico') {
+    return new Response(null, { status: 204 });
+  }
 
-    // Serve dashboard
-    if (method === 'GET' && path === '/') {
-      return new Response(DASHBOARD_HTML, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }
-      });
-    }
+  // dashboard HTML
+  if (method === 'GET' && path === '/') {
+    return new Response(DASHBOARD_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }
 
-    // Auth routes — handled locally, no proxy
-    if (path === '/api/auth/login' && method === 'POST') {
-      const body = await request.json() as { username: string; password: string };
-      if (body.username !== env.USERNAME || body.password !== env.PASSWORD) {
-        return unauthorized();
+  // login
+  if (path === '/api/auth/login' && method === 'POST') {
+    const body = await request.json() as { username: string; password: string };
+    if (body.username !== env.USERNAME || body.password !== env.PASSWORD) return unauthorized();
+    const token = await jwtSign(
+      { sub: body.username, exp: Math.floor(Date.now() / 1000) + 86400 * 30 },
+      env.JWT_SECRET
+    );
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': `token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${86400 * 30}`
       }
-      const token = await jwtSign(
-        { sub: body.username, exp: Math.floor(Date.now() / 1000) + 86400 * 30 },
-        env.JWT_SECRET
-      );
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': `token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${86400 * 30}`
-        }
-      });
+    });
+  }
+
+  // logout
+  if (path === '/api/auth/logout' && method === 'POST') {
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { 'Content-Type': 'application/json', 'Set-Cookie': 'token=; Path=/; HttpOnly; Max-Age=0' }
+    });
+  }
+
+  // WebSocket — JWT required
+  if (path === '/api/ws' && request.headers.get('Upgrade') === 'websocket') {
+    if (!await requireAuth(request, env)) return unauthorized();
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
+    server.accept();
+    const sendState = async () => {
+      try {
+        const [edges, stations, tunnels] = await Promise.all([
+          getEdges(env), getStations(env), getTunnels(env)
+        ]);
+        server.send(JSON.stringify({
+          edges: withStatus(edges),
+          stations: withStatus(stations),
+          tunnels,
+        }));
+      } catch {}
+    };
+    await sendState();
+    const timer = setInterval(sendState, 5000);
+    server.addEventListener('close', () => clearInterval(timer));
+    return new Response(null, { status: 101, webSocket: client } as ResponseInit);
+  }
+
+  // All API routes require secret (station/edge) OR JWT (dashboard user)
+  if (!path.startsWith('/api/')) return new Response('Not Found', { status: 404 });
+  const jwtOk = secretOk || !!(await requireAuth(request, env));
+  if (!jwtOk) return unauthorized();
+
+  // ── Edges ──────────────────────────────────────────────────────────────────
+
+  if (path === '/api/edges/register' && method === 'POST') {
+    if (!secretOk) return unauthorized();
+    const body = await request.json() as { name: string };
+    const now = new Date().toISOString();
+    const edges = await getEdges(env);
+    let edge = edges.find(e => e.name === body.name);
+    if (edge) {
+      edge.lastSeen = now;
+    } else {
+      edge = { id: generateId(), name: body.name, registeredAt: now, lastSeen: now, status: 'online' };
+      edges.push(edge);
     }
+    await saveEdges(env, edges);
+    return json({ edge_id: edge.id });
+  }
 
-    if (path === '/api/auth/logout' && method === 'POST') {
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': 'token=; Path=/; HttpOnly; Max-Age=0'
-        }
-      });
+  const edgeActionMatch = path.match(/^\/api\/edges\/([^/]+)\/(heartbeat|offline)$/);
+  if (edgeActionMatch && method === 'POST') {
+    if (!secretOk) return unauthorized();
+    const [, edgeId, action] = edgeActionMatch;
+    const edges = await getEdges(env);
+    const edge = edges.find(e => e.id === edgeId);
+    if (edge) {
+      edge.lastSeen = action === 'heartbeat' ? new Date().toISOString() : new Date(0).toISOString();
+      await saveEdges(env, edges);
     }
+    return json({ ok: true });
+  }
 
-    // WebSocket for real-time dashboard updates
-    if (path === '/api/ws' && request.headers.get('Upgrade') === 'websocket') {
-      const authed = await requireAuth(request, env);
-      if (!authed) return unauthorized();
+  if (path === '/api/edges' && method === 'GET') {
+    return json({ edges: withStatus(await getEdges(env)) });
+  }
 
-      const pair = new WebSocketPair();
-      const [client, server] = [pair[0], pair[1]];
-      server.accept();
+  const edgeIdMatch = path.match(/^\/api\/edges\/([^/]+)$/);
+  if (edgeIdMatch && method === 'DELETE') {
+    const [, edgeId] = edgeIdMatch;
+    await saveEdges(env, (await getEdges(env)).filter(e => e.id !== edgeId));
+    await saveTunnels(env, (await getTunnels(env)).filter(t => t.edge_id !== edgeId));
+    return json({ ok: true });
+  }
 
-      const sendState = async () => {
-        try {
-          const resp = await fetch(`${env.STATION_API_URL}/api/state`, {
-            headers: { 'X-Reno-Secret': env.API_SECRET }
-          });
-          if (!resp.ok) return;
-          const state = await resp.json() as { edges: Edge[]; stations: Station[]; tunnels: Tunnel[] };
-          server.send(JSON.stringify(state));
-        } catch {}
-      };
+  // ── Stations ────────────────────────────────────────────────────────────────
 
-      await sendState();
-      const timer = setInterval(sendState, 1000);
-      server.addEventListener('close', () => clearInterval(timer));
-
-      return new Response(null, { status: 101, webSocket: client } as ResponseInit);
+  if (path === '/api/stations/register' && method === 'POST') {
+    if (!secretOk) return unauthorized();
+    const body = await request.json() as { id: string; name: string; control_port: number; cert_fingerprint: string };
+    const now = new Date().toISOString();
+    const host = request.headers.get('CF-Connecting-IP') || '';
+    const stations = await getStations(env);
+    let station = stations.find(s => s.id === body.id);
+    if (station) {
+      station.name = body.name;
+      station.controlPort = body.control_port;
+      station.certFingerprint = body.cert_fingerprint;
+      station.host = host;
+      station.lastSeen = now;
+    } else {
+      station = { id: body.id, name: body.name, controlPort: body.control_port, certFingerprint: body.cert_fingerprint, host, registeredAt: now, lastSeen: now, status: 'online' };
+      stations.push(station);
     }
+    await saveStations(env, stations);
+    return json({ ok: true, station_id: body.id });
+  }
 
-    // Public API paths — proxy directly with API_SECRET (no JWT required)
-    if (path.startsWith('/api/') && isPublicApiPath(path, method)) {
-      return proxyToStation(request, env, path, url.search.slice(1));
-    }
+  const stationHbMatch = path.match(/^\/api\/stations\/([^/]+)\/heartbeat$/);
+  if (stationHbMatch && method === 'POST') {
+    if (!secretOk) return unauthorized();
+    const [, stationId] = stationHbMatch;
+    const stations = await getStations(env);
+    const station = stations.find(s => s.id === stationId);
+    if (station) { station.lastSeen = new Date().toISOString(); await saveStations(env, stations); }
+    return json({ ok: true });
+  }
 
-    // All remaining API routes require JWT auth, then proxy
-    if (path.startsWith('/api/')) {
-      const authed = await requireAuth(request, env);
-      if (!authed) return unauthorized();
-      return proxyToStation(request, env, path, url.search.slice(1));
-    }
+  const stationConnMatch = path.match(/^\/api\/stations\/([^/]+)\/connect$/);
+  if (stationConnMatch && method === 'GET') {
+    const [, stationId] = stationConnMatch;
+    const station = (await getStations(env)).find(s => s.id === stationId);
+    if (!station) return json({ error: 'station not found' }, 404);
+    const plain = `${station.host}:${station.controlPort}:${station.certFingerprint}`;
+    const encrypted = await cryptoEncrypt(env.API_SECRET, plain);
+    return json({ encrypted_info: encrypted, station_id: stationId });
+  }
 
-    return new Response('Not Found', { status: 404 });
+  if (path === '/api/stations' && method === 'GET') {
+    return json({ stations: withStatus(await getStations(env)) });
+  }
+
+  const stationIdMatch = path.match(/^\/api\/stations\/([^/]+)$/);
+  if (stationIdMatch && method === 'DELETE') {
+    const [, stationId] = stationIdMatch;
+    await saveStations(env, (await getStations(env)).filter(s => s.id !== stationId));
+    return json({ ok: true });
+  }
+
+  // ── Tunnels ─────────────────────────────────────────────────────────────────
+
+  if (path === '/api/tunnels' && method === 'GET') {
+    return json({ tunnels: await getTunnels(env) });
+  }
+
+  if (path === '/api/tunnels' && method === 'POST') {
+    const body = await request.json() as Partial<Tunnel>;
+    const now = new Date().toISOString();
+    const tunnel: Tunnel = {
+      id: body.id || generateId(),
+      edge_id: body.edge_id || '',
+      station_id: body.station_id || '',
+      name: body.name || '',
+      protocol: body.protocol || 'TCP',
+      local_host: body.local_host || '127.0.0.1',
+      local_port: body.local_port || 0,
+      remote_port: body.remote_port || 0,
+      status: 'idle',
+      created_at: body.created_at || now,
+    };
+    const tunnels = await getTunnels(env);
+    tunnels.push(tunnel);
+    await saveTunnels(env, tunnels);
+    return json({ tunnel });
+  }
+
+  const tunnelIdMatch = path.match(/^\/api\/tunnels\/([^/]+)$/);
+  if (tunnelIdMatch && method === 'DELETE') {
+    const [, tunnelId] = tunnelIdMatch;
+    await saveTunnels(env, (await getTunnels(env)).filter(t => t.id !== tunnelId));
+    return json({ ok: true });
+  }
+
+  return new Response('Not Found', { status: 404 });
 }

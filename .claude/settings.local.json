@@ -13,7 +13,14 @@
       "Bash(go version:*)",
       "Bash(wrangler kv:*)",
       "Bash(wrangler deploy:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(gh release:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(npm install:*)",
+      "Bash(git merge:*)",
+      "Bash(npx wrangler:*)"
     ]
   }
 }
