@@ -1033,9 +1033,12 @@ async function handle(request: Request, env: Env): Promise<Response> {
       let edgeId: string;
       if (existing) {
         edgeId = existing.id;
-        existing.lastSeen = new Date().toISOString();
-        existing.status = 'online';
-        await saveEdges(env.RENO_KV, edges);
+        const msSince = Date.now() - new Date(existing.lastSeen).getTime();
+        if (msSince > 30000 || existing.status !== 'online') {
+          existing.lastSeen = new Date().toISOString();
+          existing.status = 'online';
+          await saveEdges(env.RENO_KV, edges);
+        }
       } else {
         edgeId = generateId();
         edges.push({
@@ -1077,9 +1080,13 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const edges = await getEdges(env.RENO_KV);
       const edge = edges.find(e => e.id === edgeId);
       if (edge) {
-        edge.lastSeen = new Date().toISOString();
-        edge.status = 'online';
-        await saveEdges(env.RENO_KV, edges);
+        const msSince = Date.now() - new Date(edge.lastSeen).getTime();
+        // Only write to KV every 30s to stay within daily write limits
+        if (msSince > 30000 || edge.status !== 'online') {
+          edge.lastSeen = new Date().toISOString();
+          edge.status = 'online';
+          await saveEdges(env.RENO_KV, edges);
+        }
       }
 
       return json({ ok: true });
@@ -1100,9 +1107,12 @@ async function handle(request: Request, env: Env): Promise<Response> {
         stationId = existing.id;
         existing.controlPort = body.control_port;
         existing.certFingerprint = body.cert_fingerprint;
-        existing.lastSeen = new Date().toISOString();
-        existing.status = 'online';
-        await saveStations(env.RENO_KV, stations);
+        const msSince = Date.now() - new Date(existing.lastSeen).getTime();
+        if (msSince > 30000 || existing.status !== 'online') {
+          existing.lastSeen = new Date().toISOString();
+          existing.status = 'online';
+          await saveStations(env.RENO_KV, stations);
+        }
       } else {
         stationId = generateId();
         stations.push({
@@ -1187,9 +1197,13 @@ async function handle(request: Request, env: Env): Promise<Response> {
       ]);
       const station = stations.find(s => s.id === stationId);
       if (station) {
-        station.lastSeen = new Date().toISOString();
-        station.status = 'online';
-        await saveStations(env.RENO_KV, stations);
+        const msSince = Date.now() - new Date(station.lastSeen).getTime();
+        // Only write to KV every 30s to stay within daily write limits
+        if (msSince > 30000 || station.status !== 'online') {
+          station.lastSeen = new Date().toISOString();
+          station.status = 'online';
+          await saveStations(env.RENO_KV, stations);
+        }
       }
 
       // Return tunnel list so station can sync immediately without a separate poll
