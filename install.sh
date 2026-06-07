@@ -53,52 +53,12 @@ fi
 
 echo "Installed: $DEST"
 
-# On Linux/macOS, service install needs root. Use sudo when available.
-# When piped (curl|bash), stdin is not a tty so sudo can't prompt — fall back to instructions.
-maybe_sudo() {
-  if [ "$(id -u)" -eq 0 ]; then
-    "$@"
-  elif sudo -n true 2>/dev/null; then
-    # sudo credentials are cached or NOPASSWD — no prompt needed
-    sudo "$@"
-  elif [ -t 0 ] && [ -t 1 ]; then
-    # stdin/stdout are both ttys — interactive, can prompt
-    sudo "$@"
-  else
-    echo ""
-    echo "  Root is required to install the service."
-    echo "  Run this manually to finish setup:"
-    echo ""
-    echo "    sudo $*"
-    echo ""
-  fi
-}
-
-# Optional: start services based on argument
-# Usage: install.sh [station|edge|both]
-case "${1:-}" in
-  station)
-    echo ""
-    maybe_sudo reno station
-    ;;
-  edge)
-    echo ""
-    maybe_sudo reno edge
-    ;;
-  both)
-    echo ""
-    maybe_sudo reno station
-    maybe_sudo reno edge
-    ;;
-  *)
-    echo ""
-    echo "Usage:"
-    echo "  reno config    # set up config (~/.config/reno/config.json)"
-    echo "  reno station   # start Station (background, auto-start on boot)"
-    echo "  reno edge      # start Edge (background, auto-start on boot)"
-    echo "  reno down      # stop both"
-    echo "  reno remove    # uninstall"
-    echo "  reno update    # update to latest"
-    echo "  reno version   # show version"
-    ;;
-esac
+echo ""
+echo "Usage:"
+echo "  reno config         # set up config (~/.config/reno/config.json)"
+echo "  sudo reno station   # start Station (background, auto-start on boot)"
+echo "  sudo reno edge      # start Edge (background, auto-start on boot)"
+echo "  sudo reno down      # stop both"
+echo "  sudo reno remove    # uninstall"
+echo "  reno update         # update to latest"
+echo "  reno version        # show version"
