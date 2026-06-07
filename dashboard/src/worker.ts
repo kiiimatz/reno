@@ -987,10 +987,10 @@ export default {
         ]);
         const now = Date.now();
         for (const e of edgeList) {
-          if (now - new Date(e.lastSeen).getTime() > 60000) e.status = 'offline';
+          if (now - new Date(e.lastSeen).getTime() > 20000) e.status = 'offline';
         }
         for (const s of stationList) {
-          if (now - new Date(s.lastSeen).getTime() > 60000) s.status = 'offline';
+          if (now - new Date(s.lastSeen).getTime() > 20000) s.status = 'offline';
         }
         try {
           server.send(JSON.stringify({ edges: edgeList, stations: stationList, tunnels: tunnelList }));
@@ -998,7 +998,7 @@ export default {
       };
 
       await sendState();
-      const timer = setInterval(sendState, 1000);
+      const timer = setInterval(sendState, 500);
       server.addEventListener('close', () => clearInterval(timer));
 
       return new Response(null, { status: 101, webSocket: client } as ResponseInit);
@@ -1183,7 +1183,7 @@ export default {
       const edges = await getEdges(env.RENO_KV);
       const now = Date.now();
       for (const e of edges) {
-        if (now - new Date(e.lastSeen).getTime() > 120000) {
+        if (now - new Date(e.lastSeen).getTime() > 20000) {
           e.status = 'offline';
         }
       }
@@ -1204,7 +1204,7 @@ export default {
       const stations = await getStations(env.RENO_KV);
       const now = Date.now();
       for (const s of stations) {
-        if (now - new Date(s.lastSeen).getTime() > 120000) {
+        if (now - new Date(s.lastSeen).getTime() > 20000) {
           s.status = 'offline';
         }
       }

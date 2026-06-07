@@ -1032,7 +1032,7 @@ func updateListeners(newTunnels []protocol.TunnelConfig) {
 
 func heartbeat(cfg Config) {
 	for {
-		time.Sleep(30 * time.Second)
+		time.Sleep(10 * time.Second)
 		if stationID == "" {
 			continue
 		}
@@ -1150,7 +1150,7 @@ func registerEdgeWithDashboard(cfg Config, name string) {
 
 func edgeHeartbeatLoop(cfg Config) {
 	for {
-		time.Sleep(30 * time.Second)
+		time.Sleep(10 * time.Second)
 		if dashboardEdgeID == "" {
 			continue
 		}
