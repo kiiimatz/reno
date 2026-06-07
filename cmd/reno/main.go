@@ -117,6 +117,12 @@ func main() {
 		runUpdate()
 	case "config":
 		runConfig()
+	case "log":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: reno log <station|edge>")
+			os.Exit(1)
+		}
+		runLog(os.Args[2])
 	// Internal subcommands used by the OS service manager — not shown in help
 	case "station-daemon":
 		runStationDaemon()
@@ -131,13 +137,45 @@ func main() {
 func printUsage() {
 	fmt.Printf("reno %s\n\n", version)
 	fmt.Println("Usage:")
-	fmt.Println("  reno station   Start Station in background (auto-start on boot)")
-	fmt.Println("  reno edge      Start Edge in background (auto-start on boot)")
-	fmt.Println("  reno down      Stop both Station and Edge")
-	fmt.Println("  reno remove    Uninstall services and binary")
-	fmt.Println("  reno update    Update to the latest version")
-	fmt.Println("  reno version   Show version")
-	fmt.Println("  reno config    Edit configuration")
+	fmt.Println("  reno station        Start Station in background (auto-start on boot)")
+	fmt.Println("  reno edge           Start Edge in background (auto-start on boot)")
+	fmt.Println("  reno log station    Follow Station logs")
+	fmt.Println("  reno log edge       Follow Edge logs")
+	fmt.Println("  reno down           Stop both Station and Edge")
+	fmt.Println("  reno remove         Uninstall services and binary")
+	fmt.Println("  reno update         Update to the latest version")
+	fmt.Println("  reno version        Show version")
+	fmt.Println("  reno config         Edit configuration")
+}
+
+// ─── Log ─────────────────────────────────────────────────────────────────────
+
+func runLog(component string) {
+	if component != "station" && component != "edge" {
+		fmt.Fprintf(os.Stderr, "Unknown component %q. Use 'station' or 'edge'.\n", component)
+		os.Exit(1)
+	}
+	svcName := "reno-" + component
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "linux":
+		cmd = exec.Command("journalctl", "-u", svcName, "-f", "--no-pager")
+	case "darwin":
+		logPath := "/var/log/" + svcName + ".log"
+		cmd = exec.Command("tail", "-f", logPath)
+	case "windows":
+		logPath := filepath.Join(filepath.Dir(configPath()), component+".log")
+		cmd = exec.Command("powershell", "-Command", "Get-Content", "-Path", logPath, "-Wait", "-Tail", "50")
+	default:
+		fmt.Fprintf(os.Stderr, "Unsupported OS: %s\n", runtime.GOOS)
+		os.Exit(1)
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "log: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // ─── Update ───────────────────────────────────────────────────────────────────
