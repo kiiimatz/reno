@@ -591,7 +591,12 @@ func registerStation(cfg Config) {
 		log.Printf("station register: %v", err)
 		return
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("station register failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return
+	}
 	log.Printf("Station registered with dashboard")
 }
 
@@ -1181,17 +1186,20 @@ func markEdgeOffline(cfg Config) {
 }
 
 func registerEdgeWithDashboard(cfg Config, name string) {
-	body := map[string]interface{}{
-		"name":   name,
-		"secret": cfg.APISecret,
-	}
+	body := map[string]interface{}{"name": name}
 	data, _ := json.Marshal(body)
-	resp, err := http.Post(cfg.DashboardURL+"/api/edges/register", "application/json", bytes.NewReader(data))
+	url := fmt.Sprintf("%s/api/edges/register?secret=%s", cfg.DashboardURL, cfg.APISecret)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(data))
 	if err != nil {
 		log.Printf("edge register: %v", err)
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("edge register failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return
+	}
 	var result struct {
 		EdgeID string `json:"edge_id"`
 	}
