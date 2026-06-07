@@ -1117,7 +1117,11 @@ func generateID() string {
 // ─── Edge globals ─────────────────────────────────────────────────────────────
 
 var (
-	edgeTunnels     []protocol.TunnelConfig
+	// edgeTunnelMap holds the latest tunnel list per station connection.
+	// Each runEdgeForStation goroutine writes its own key; findTunnel searches all.
+	edgeTunnelsMu sync.RWMutex
+	edgeTunnelMap = make(map[string][]protocol.TunnelConfig)
+
 	dashboardEdgeID string
 
 	localChannelsMu sync.RWMutex
@@ -1343,6 +1347,13 @@ func runEdgeForStation(ctx context.Context, cfg Config, stationID string) {
 }
 
 func edgeRun(cfg Config, stationRef string) error {
+	// Clean up this station's tunnel entries when the connection drops.
+	defer func() {
+		edgeTunnelsMu.Lock()
+		delete(edgeTunnelMap, stationRef)
+		edgeTunnelsMu.Unlock()
+	}()
+
 	url := fmt.Sprintf("%s/api/stations/%s/connect?secret=%s", cfg.DashboardURL, stationRef, cfg.APISecret)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -1432,8 +1443,10 @@ func edgeRun(cfg Config, stationRef string) error {
 		case protocol.MsgTunnelSync:
 			var sync protocol.TunnelSyncMsg
 			msg.DecodeJSON(&sync)
-			edgeTunnels = sync.Tunnels
-			log.Printf("Tunnel sync: %d tunnel(s)", len(edgeTunnels))
+			edgeTunnelsMu.Lock()
+			edgeTunnelMap[stationRef] = sync.Tunnels
+			edgeTunnelsMu.Unlock()
+			log.Printf("[%s] Tunnel sync: %d tunnel(s)", stationRef[:8], len(sync.Tunnels))
 
 		case protocol.MsgChannelOpen:
 			var open protocol.ChannelOpenMsg
@@ -1567,9 +1580,14 @@ func handleLocalUDPChannel(open protocol.ChannelOpenMsg, writer *protocol.Writer
 }
 
 func findTunnel(id string) *protocol.TunnelConfig {
-	for i := range edgeTunnels {
-		if edgeTunnels[i].ID == id {
-			return &edgeTunnels[i]
+	edgeTunnelsMu.RLock()
+	defer edgeTunnelsMu.RUnlock()
+	for _, tunnels := range edgeTunnelMap {
+		for i := range tunnels {
+			if tunnels[i].ID == id {
+				t := tunnels[i]
+				return &t
+			}
 		}
 	}
 	return nil

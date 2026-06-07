@@ -35,6 +35,7 @@ interface Tunnel {
   local_port: number;
   remote_port: number;
   status: 'active' | 'idle';
+  enabled: boolean;
   created_at: string;
 }
 
@@ -478,13 +479,40 @@ html, body {
 
 .tunnel-item {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 9px 14px;
   border-bottom: 0.5px solid var(--border);
   transition: background 0.1s;
 }
+
+.t-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.t-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.t-toggle-track {
+  width: 28px; height: 16px;
+  background: var(--border);
+  border-radius: 8px;
+  transition: background 0.2s;
+  position: relative;
+}
+.t-toggle-track::after {
+  content: '';
+  position: absolute;
+  left: 2px; top: 2px;
+  width: 12px; height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.t-toggle input:checked + .t-toggle-track { background: var(--badge-active-text); }
+.t-toggle input:checked + .t-toggle-track::after { transform: translateX(12px); }
 .tunnel-item:last-child { border-bottom: none; }
 .tunnel-item:hover { background: var(--bg-secondary); }
 
@@ -841,9 +869,12 @@ function renderTunnels() {
     const station = stations.find(function(s) { return s.id === t.station_id; });
     const edgeOnline    = edge    && edge.status    === 'online';
     const stationOnline = station && station.status === 'online';
-    const badge = (edgeOnline && stationOnline)
-      ? '<span class="t-badge active">active</span>'
-      : '<span class="t-badge idle">idle</span>';
+    const enabled = t.enabled !== false;
+    const badge = !enabled
+      ? '<span class="t-badge idle">off</span>'
+      : (edgeOnline && stationOnline)
+        ? '<span class="t-badge active">active</span>'
+        : '<span class="t-badge idle">idle</span>';
     const edgeName    = edge    ? esc(edge.name)    : '?';
     const stationName = station ? esc(station.name) : '?';
     return '<div class="tunnel-item">' +
@@ -854,6 +885,10 @@ function renderTunnels() {
       '</div>' +
       '<span class="t-proto">' + esc(t.protocol) + '</span>' +
       badge +
+      '<label class="t-toggle" title="' + (enabled ? 'Disable' : 'Enable') + ' tunnel">' +
+        '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-toggle-id="' + esc(t.id) + '">' +
+        '<span class="t-toggle-track"></span>' +
+      '</label>' +
       '<button class="t-del" data-tunnel-id="' + esc(t.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
@@ -866,6 +901,22 @@ document.addEventListener('click', function(e) {
   if (btn.dataset.edgeId)    deleteEdge(btn.dataset.edgeId);
   if (btn.dataset.stationId) deleteStation(btn.dataset.stationId);
 });
+
+document.addEventListener('change', function(e) {
+  const input = e.target.closest('input[data-toggle-id]');
+  if (!input) return;
+  toggleTunnel(input.dataset.toggleId);
+});
+
+async function toggleTunnel(id) {
+  lastMutation = Date.now();
+  const res = await fetch('/api/tunnels/' + id + '/toggle', { method: 'POST' });
+  if (res.ok) {
+    const data = await res.json();
+    const idx = tunnels.findIndex(function(t) { return t.id === id; });
+    if (idx !== -1) { tunnels[idx] = data.tunnel; renderTunnels(); }
+  }
+}
 
 async function createTunnel() {
   const edgeId     = document.getElementById('form-edge').value;
@@ -1130,7 +1181,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const stationFilter = url.searchParams.get('station_id');
     const edgeFilter = url.searchParams.get('edge_id');
     let tunnels = await getTunnels(env);
-    if (stationFilter) tunnels = tunnels.filter(t => t.station_id === stationFilter);
+    // When polling for a specific station, exclude disabled tunnels so the station stops listening
+    if (stationFilter) tunnels = tunnels.filter(t => t.station_id === stationFilter && t.enabled !== false);
     if (edgeFilter) tunnels = tunnels.filter(t => t.edge_id === edgeFilter);
     return json({ tunnels });
   }
@@ -1148,6 +1200,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       local_port: body.local_port || 0,
       remote_port: body.remote_port || 0,
       status: 'idle',
+      enabled: true,
       created_at: body.created_at || now,
     };
     const tunnels = await getTunnels(env);
@@ -1161,6 +1214,18 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const [, tunnelId] = tunnelIdMatch;
     await saveTunnels(env, (await getTunnels(env)).filter(t => t.id !== tunnelId));
     return json({ ok: true });
+  }
+
+  const tunnelToggleMatch = path.match(/^\/api\/tunnels\/([^/]+)\/toggle$/);
+  if (tunnelToggleMatch && method === 'POST') {
+    if (!secretOk) return unauthorized();
+    const [, tunnelId] = tunnelToggleMatch;
+    const tunnels = await getTunnels(env);
+    const tunnel = tunnels.find(t => t.id === tunnelId);
+    if (!tunnel) return json({ error: 'not found' }, 404);
+    tunnel.enabled = tunnel.enabled === false ? true : false;
+    await saveTunnels(env, tunnels);
+    return json({ tunnel });
   }
 
   return new Response('Not Found', { status: 404 });
