@@ -248,8 +248,8 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   --accent:        rgba(240,237,232,1);
   --accent-hover:  rgba(255,255,255,1);
   --accent-text:   rgba(30,29,27,1);
-  --badge-active-bg:  rgba(34,85,40,1);
-  --badge-active-text:rgba(100,210,110,1);
+  --badge-active-bg:  rgba(78,207,113,0.15);
+  --badge-active-text:rgba(78,207,113,1);
   --badge-idle-bg:    rgba(60,58,55,1);
   --badge-idle-text:  rgba(130,128,124,1);
   --proto-bg:   rgba(60,58,55,1);
