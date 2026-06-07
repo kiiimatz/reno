@@ -324,6 +324,17 @@ func runRemove() {
 		fmt.Printf("Removed %s\n", exePath)
 	}
 
+	// Remove config file and its directory
+	cfgFile := configPath()
+	if err := os.Remove(cfgFile); err == nil {
+		fmt.Printf("Removed %s\n", cfgFile)
+	}
+	cfgDir := filepath.Dir(cfgFile)
+	if entries, err := os.ReadDir(cfgDir); err == nil && len(entries) == 0 {
+		os.Remove(cfgDir)
+		fmt.Printf("Removed %s\n", cfgDir)
+	}
+
 	fmt.Println("Reno removed.")
 }
 
