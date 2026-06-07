@@ -340,9 +340,6 @@ html, body {
   transition: background 0.15s;
 }
 
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.node-card { padding: 16px 18px; }
-
 .section-label {
   font-family: var(--font-sans);
   font-size: 11px;
@@ -350,10 +347,59 @@ html, body {
   color: var(--text-label);
   letter-spacing: 0.7px;
   text-transform: uppercase;
-  margin-bottom: 12px;
 }
 
-/* ── Node rows (edges/stations) ── */
+/* ── Nodes collapsible card ── */
+.nodes-card { overflow: hidden; }
+
+.nodes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.nodes-header:hover { background: rgba(255,255,255,0.03); }
+
+.nodes-arrow {
+  width: 16px; height: 16px;
+  stroke: var(--text-label); fill: none;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  transition: transform 0.28s ease;
+  flex-shrink: 0;
+}
+.nodes-arrow.open { transform: rotate(180deg); }
+
+.nodes-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.32s ease;
+}
+.nodes-body.open { max-height: 600px; }
+
+.nodes-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-top: 1px solid var(--border);
+}
+
+.nodes-section { padding: 14px 18px; }
+.nodes-section:first-child { border-right: 1px solid var(--border); }
+
+.nodes-sublabel {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-label);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* ── Node rows ── */
 .node-row {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 0;
@@ -657,14 +703,24 @@ html, body {
       </button>
     </header>
 
-    <div class="two-col">
-      <div class="card node-card">
-        <div class="section-label">Edges</div>
-        <div id="edge-list"><div class="empty-sm">No edges</div></div>
+    <div class="card nodes-card">
+      <div class="nodes-header" onclick="toggleNodes()">
+        <span class="section-label">Edges &amp; Stations</span>
+        <svg class="nodes-arrow" id="nodes-arrow" viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
       </div>
-      <div class="card node-card">
-        <div class="section-label">Stations</div>
-        <div id="station-list"><div class="empty-sm">No stations</div></div>
+      <div class="nodes-body" id="nodes-body">
+        <div class="nodes-cols">
+          <div class="nodes-section">
+            <div class="nodes-sublabel">Edges</div>
+            <div id="edge-list"><div class="empty-sm">No edges</div></div>
+          </div>
+          <div class="nodes-section">
+            <div class="nodes-sublabel">Stations</div>
+            <div id="station-list"><div class="empty-sm">No stations</div></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -723,6 +779,13 @@ let stations = [];
 let tunnels = [];
 let ws = null;
 let lastMutation = 0;
+let nodesOpen = false;
+
+function toggleNodes() {
+  nodesOpen = !nodesOpen;
+  document.getElementById('nodes-body').classList.toggle('open', nodesOpen);
+  document.getElementById('nodes-arrow').classList.toggle('open', nodesOpen);
+}
 
 async function init() {
   const res = await fetch('/api/stations');
