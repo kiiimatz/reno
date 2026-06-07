@@ -426,27 +426,60 @@ html, body {
 
 .empty-sm { font-size: 12px; color: var(--text-label); padding: 2px 0; }
 
-/* ── Create form ── */
-.create-card { overflow: hidden; }
-
-.create-header {
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+.modal-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+}
+.modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  width: 100%;
+  max-width: 520px;
+  transform: translateY(10px) scale(0.98);
+  transition: transform 0.22s ease;
+}
+.modal-overlay.open .modal {
+  transform: translateY(0) scale(1);
+}
+.modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  margin-bottom: 18px;
+}
+.modal-close {
+  background: var(--del-bg);
+  border: 1px solid var(--del-border);
+  color: var(--del-text);
+  width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  user-select: none;
-  transition: background 0.15s;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
 }
-.create-header:hover { background: rgba(255,255,255,0.03); }
+.modal-close:hover { background: var(--danger-bg); color: var(--danger-text); border-color: transparent; }
+.modal-close svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
 
-.create-body {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.32s ease;
-}
-.create-body.open { max-height: 400px; }
-.create-body-inner { padding: 0 18px 18px; border-top: 1px solid var(--border); padding-top: 16px; }
+/* ── Create form (inside modal) ── */
 
 .create-fields {
   display: flex;
@@ -746,59 +779,62 @@ html, body {
       </div>
     </div>
 
-    <div class="card create-card">
-      <div class="create-header" onclick="toggleCreate()">
-        <span class="section-label">Create Tunnel</span>
-        <svg class="nodes-arrow" id="create-arrow" viewBox="0 0 24 24" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
+    <div class="card list-card">
+      <div class="list-header" style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px">
+        <span>Tunnels</span>
+        <button class="modal-close" onclick="openCreate()" aria-label="Create tunnel" style="background:var(--del-bg);border-color:var(--del-border)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
       </div>
-      <div class="create-body" id="create-body">
-        <div class="create-body-inner">
-          <div class="create-fields">
-            <div class="field">
-              <label>Edge</label>
-              <select id="form-edge"><option value="">Select...</option></select>
-            </div>
-            <div class="field">
-              <label>Station</label>
-              <select id="form-station"><option value="">Select...</option></select>
-            </div>
-            <div class="field">
-              <label>Protocol</label>
-              <select id="form-protocol">
-                <option>TCP</option><option>UDP</option><option>QUIC</option><option>HTTP</option><option>HTTPS</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>IP</label>
-              <input id="form-ip" type="text" placeholder="127.0.0.1" value="127.0.0.1" />
-            </div>
-          </div>
-          <div class="create-fields-2">
-            <div class="field-sm">
-              <label>Port</label>
-              <input id="form-port" type="number" placeholder="8080" />
-            </div>
-            <div class="field-sm" style="width:96px">
-              <label>Remote Port</label>
-              <input id="form-remote-port" type="number" placeholder="13000" />
-            </div>
-            <div class="field-grow">
-              <label>Name</label>
-              <input id="form-name" type="text" placeholder="my-service" />
-            </div>
-          </div>
-          <div class="create-footer">
-            <button class="btn-create" onclick="createTunnel()">Create</button>
-          </div>
-        </div>
-      </div>
+      <div class="tunnel-list" id="tunnel-list"></div>
     </div>
 
-    <div class="card list-card">
-      <div class="list-header">Tunnels</div>
-      <div class="tunnel-list" id="tunnel-list"></div>
+    <div class="modal-overlay" id="create-overlay" onclick="handleOverlayClick(event)">
+      <div class="modal">
+        <div class="modal-header">
+          <span class="section-label">Create Tunnel</span>
+          <button class="modal-close" onclick="closeCreate()" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="create-fields">
+          <div class="field">
+            <label>Edge</label>
+            <select id="form-edge"><option value="">Select...</option></select>
+          </div>
+          <div class="field">
+            <label>Station</label>
+            <select id="form-station"><option value="">Select...</option></select>
+          </div>
+          <div class="field">
+            <label>Protocol</label>
+            <select id="form-protocol">
+              <option>TCP</option><option>UDP</option><option>QUIC</option><option>HTTP</option><option>HTTPS</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>IP</label>
+            <input id="form-ip" type="text" placeholder="127.0.0.1" value="127.0.0.1" />
+          </div>
+        </div>
+        <div class="create-fields-2">
+          <div class="field-sm">
+            <label>Port</label>
+            <input id="form-port" type="number" placeholder="8080" />
+          </div>
+          <div class="field-sm" style="width:96px">
+            <label>Remote Port</label>
+            <input id="form-remote-port" type="number" placeholder="13000" />
+          </div>
+          <div class="field-grow">
+            <label>Name</label>
+            <input id="form-name" type="text" placeholder="my-service" />
+          </div>
+        </div>
+        <div class="create-footer">
+          <button class="btn-create" onclick="createTunnel()">Create</button>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -818,11 +854,14 @@ function toggleNodes() {
   document.getElementById('nodes-arrow').classList.toggle('open', nodesOpen);
 }
 
-let createOpen = false;
-function toggleCreate() {
-  createOpen = !createOpen;
-  document.getElementById('create-body').classList.toggle('open', createOpen);
-  document.getElementById('create-arrow').classList.toggle('open', createOpen);
+function openCreate() {
+  document.getElementById('create-overlay').classList.add('open');
+}
+function closeCreate() {
+  document.getElementById('create-overlay').classList.remove('open');
+}
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('create-overlay')) closeCreate();
 }
 
 async function init() {
@@ -1027,6 +1066,7 @@ async function createTunnel() {
     document.getElementById('form-name').value = '';
     document.getElementById('form-remote-port').value = '';
     renderTunnels();
+    closeCreate();
   }
 }
 
