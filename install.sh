@@ -35,13 +35,33 @@ else
 fi
 
 chmod +x "$DEST"
-
 echo "Installed: $DEST"
-echo ""
-echo "Usage:"
-echo "  reno config    # set up config (~/.config/reno/config.json)"
-echo "  reno station   # start Station server (background, auto-start on boot)"
-echo "  reno edge      # start Edge client (background, auto-start on boot)"
-echo "  reno down      # stop Station and Edge"
-echo "  reno remove    # uninstall reno (stops services, removes binary)"
-echo "  reno version   # show version"
+
+# Optional: start services based on argument
+# Usage: install.sh [station|edge|both]
+case "${1:-}" in
+  station)
+    echo ""
+    reno station
+    ;;
+  edge)
+    echo ""
+    reno edge
+    ;;
+  both)
+    echo ""
+    reno station
+    reno edge
+    ;;
+  *)
+    echo ""
+    echo "Usage:"
+    echo "  reno config    # set up config (~/.config/reno/config.json)"
+    echo "  reno station   # start Station (background, auto-start on boot)"
+    echo "  reno edge      # start Edge (background, auto-start on boot)"
+    echo "  reno down      # stop both"
+    echo "  reno remove    # uninstall"
+    echo "  reno update    # update to latest"
+    echo "  reno version   # show version"
+    ;;
+esac
