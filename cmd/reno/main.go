@@ -449,8 +449,6 @@ func runConfig() {
 			},
 			Edge: EdgeConfig{
 				Name: hostname,
-				// Empty = auto-connect to first station on dashboard
-				StationID: "",
 			},
 		}
 		data, _ := json.MarshalIndent(def, "", "  ")
