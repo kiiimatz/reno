@@ -54,11 +54,11 @@ type StationConfig struct {
 }
 
 type EdgeConfig struct {
-	// StationID is optional. Leave empty to auto-connect to the first
-	// registered station on the dashboard.
-	StationID string `json:"station_id"`
 	// Name identifies this edge in the dashboard. Defaults to hostname.
 	Name string `json:"name"`
+	// StationID is optional. Leave empty to auto-connect to the first
+	// registered station on the dashboard.
+	StationID string `json:"station_id,omitempty"`
 }
 
 func configPath() string {
