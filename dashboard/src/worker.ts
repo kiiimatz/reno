@@ -182,38 +182,34 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg: #1a1a1c;
-    --surface: #252528;
-    --surface2: #2e2e32;
-    --border: #3a3a3e;
-    --text: #e8e8ea;
-    --text2: #8a8a8e;
-    --text3: #5a5a5e;
-    --online: #22c55e;
-    --online-bg: #14532d;
-    --offline: #71717a;
-    --offline-bg: #27272a;
-    --btn-bg: #f4f4f5;
+    --bg:       #1a1a1c;
+    --surface:  #252528;
+    --input:    #2e2e32;
+    --border:   #3a3a3e;
+    --text:     #e8e8ea;
+    --muted:    #8a8a8e;
+    --dim:      #5a5a5e;
+    --green:    #22c55e;
+    --green-bg: #14532d;
+    --offline:  #52525b;
+    --btn-bg:   #f4f4f5;
     --btn-text: #18181b;
-    --logo-bg: #3b82f6;
-    --input-bg: #1a1a1c;
+    --blue:     #3b82f6;
   }
 
   body.light {
-    --bg: #f4f4f5;
-    --surface: #ffffff;
-    --surface2: #f0f0f1;
-    --border: #d4d4d8;
-    --text: #18181b;
-    --text2: #52525b;
-    --text3: #a1a1aa;
-    --online: #16a34a;
-    --online-bg: #dcfce7;
-    --offline: #71717a;
-    --offline-bg: #f4f4f5;
-    --btn-bg: #18181b;
+    --bg:       #f0f0f2;
+    --surface:  #ffffff;
+    --input:    #ebebed;
+    --border:   #d4d4d8;
+    --text:     #18181b;
+    --muted:    #52525b;
+    --dim:      #a1a1aa;
+    --green:    #16a34a;
+    --green-bg: #dcfce7;
+    --offline:  #a1a1aa;
+    --btn-bg:   #18181b;
     --btn-text: #f4f4f5;
-    --input-bg: #f4f4f5;
   }
 
   body {
@@ -222,216 +218,300 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     font-size: 14px;
     min-height: 100vh;
-    transition: background 0.2s, color 0.2s;
+    transition: background 0.15s, color 0.15s;
   }
 
-  .app { position: relative; max-width: 700px; margin: 0 auto; padding: 40px 16px; }
-
-  .top-bar {
-    position: absolute;
-    top: 16px; right: 16px;
+  /* ── Layout ── */
+  .wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 36px 20px 60px;
   }
 
-  .light-btn {
+  /* ── Header ── */
+  .hdr {
+    display: flex;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--blue);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px;
+    flex-shrink: 0;
+  }
+  .logo-name {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+  }
+  .theme-btn {
+    margin-left: auto;
     background: none;
     border: 1.5px solid var(--border);
     border-radius: 20px;
     color: var(--text);
     cursor: pointer;
-    padding: 6px 14px;
-    font-size: 13px;
+    font-size: 12px;
+    padding: 5px 14px;
+    transition: border-color 0.15s;
   }
+  .theme-btn:hover { border-color: var(--muted); }
 
-  .header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 28px;
-  }
-
-  .logo-icon {
-    width: 40px; height: 40px;
-    background: var(--logo-bg);
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 20px;
-  }
-
-  .logo-text {
-    font-size: 22px;
-    font-weight: 600;
-    letter-spacing: -0.5px;
-  }
-
-  .two-col {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-
+  /* ── Card ── */
   .card {
     background: var(--surface);
     border-radius: 14px;
-    padding: 20px;
-    margin-bottom: 12px;
+    padding: 22px 24px;
+    margin-bottom: 10px;
   }
 
   .section-title {
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 1.2px;
-    color: var(--text2);
+    letter-spacing: 1.5px;
+    color: var(--muted);
     text-transform: uppercase;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
   }
 
-  .node-list { display: flex; flex-direction: column; gap: 2px; }
+  /* ── Two column ── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
 
-  .node-item {
+  /* ── Node rows (edges / stations) ── */
+  .node-row {
     display: flex;
     align-items: center;
-    padding: 8px 0;
+    padding: 9px 0;
     border-bottom: 1px solid var(--border);
     gap: 8px;
   }
+  .node-row:last-child { border-bottom: none; }
 
-  .node-item:last-child { border-bottom: none; }
-
-  .node-name { flex: 1; font-size: 13px; font-weight: 500; }
-
-  .dot {
+  .node-dot {
     width: 7px; height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .dot.online { background: var(--online); }
-  .dot.offline { background: var(--offline); }
+  .node-dot.online  { background: var(--green); }
+  .node-dot.offline { background: var(--offline); }
 
-  .status-text {
+  .node-label {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .node-status {
     font-size: 11px;
+    flex-shrink: 0;
   }
-  .status-text.online { color: var(--online); }
-  .status-text.offline { color: var(--offline); }
+  .node-status.online  { color: var(--green); }
+  .node-status.offline { color: var(--offline); }
 
-  .del-btn {
-    background: none;
-    border: none;
-    color: var(--text3);
+  .icon-btn {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--input);
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    color: var(--muted);
     cursor: pointer;
-    font-size: 14px;
-    padding: 2px 6px;
-    border-radius: 4px;
+    font-size: 13px;
+    flex-shrink: 0;
+    transition: border-color 0.12s, color 0.12s;
   }
-  .del-btn:hover { color: #ef4444; }
+  .icon-btn:hover { border-color: #ef4444; color: #ef4444; }
 
-  .empty { color: var(--text3); font-size: 12px; padding: 8px 0; }
+  .empty-msg {
+    color: var(--dim);
+    font-size: 12px;
+    padding: 4px 0;
+  }
 
-  .form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  /* ── Form ── */
+  .form-row {
+    display: flex;
     gap: 8px;
+    flex-wrap: wrap;
+    align-items: flex-end;
   }
 
-  .form-col { display: flex; flex-direction: column; gap: 5px; }
-  .form-col label { font-size: 11px; color: var(--text2); }
-  .form-col.full { grid-column: 1 / -1; }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+  .field label {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .f-edge    { flex: 1.2; min-width: 100px; }
+  .f-station { flex: 1.2; min-width: 100px; }
+  .f-proto   { flex: 0.7; min-width: 72px; }
+  .f-ip      { flex: 1.6; min-width: 110px; }
+  .f-port    { flex: 0.8; min-width: 72px; }
+  .f-rport   { flex: 0.8; min-width: 72px; }
+
+  .form-row2 {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    margin-top: 8px;
+  }
+  .f-name { flex: 1; }
 
   input, select {
-    background: var(--surface2);
+    background: var(--input);
     border: 1.5px solid var(--border);
     border-radius: 8px;
     color: var(--text);
     font-size: 13px;
-    padding: 9px 10px;
+    font-weight: 500;
+    padding: 9px 11px;
     width: 100%;
     outline: none;
     transition: border-color 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
   }
-
-  input:focus, select:focus { border-color: var(--logo-bg); }
-
-  .form-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 10px;
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a8a8e'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
   }
+  input::placeholder { color: var(--dim); font-weight: 400; }
+  input:focus, select:focus { border-color: var(--blue); }
 
-  .btn-primary {
+  .btn {
     background: var(--btn-bg);
     color: var(--btn-text);
     border: none;
     border-radius: 8px;
     cursor: pointer;
     font-size: 13px;
-    font-weight: 500;
-    padding: 9px 18px;
+    font-weight: 600;
+    padding: 9px 22px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: opacity 0.12s;
   }
+  .btn:hover { opacity: 0.85; }
 
-  .btn-primary:hover { opacity: 0.88; }
-
-  .tunnel-list { display: flex; flex-direction: column; }
-
-  .tunnel-item {
+  /* ── Tunnel rows ── */
+  .tunnel-row {
     display: flex;
     align-items: center;
-    padding: 12px 0;
+    padding: 13px 0;
     border-bottom: 1px solid var(--border);
-    gap: 10px;
+    gap: 12px;
   }
-
-  .tunnel-item:last-child { border-bottom: none; }
+  .tunnel-row:last-child { border-bottom: none; }
 
   .tunnel-info { flex: 1; min-width: 0; }
-  .tunnel-name { font-weight: 600; font-size: 13px; }
-  .tunnel-meta { font-size: 11px; color: var(--text2); margin-top: 3px; font-family: 'SF Mono', 'Consolas', monospace; }
-  .tunnel-route { font-size: 11px; color: var(--text3); margin-top: 1px; }
+  .tunnel-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tunnel-addr {
+    font-size: 12px;
+    color: #6a6a6e;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    margin-top: 2px;
+  }
+  .tunnel-sub {
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 2px;
+  }
 
   .tunnel-right {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex-shrink: 0;
   }
-
-  .badge {
+  .proto-text {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    min-width: 34px;
+    text-align: right;
+  }
+  .status-active {
     font-size: 11px;
     font-weight: 500;
-    padding: 2px 8px;
-    border-radius: 5px;
-    background: var(--surface2);
-    color: var(--text2);
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: var(--green-bg);
+    color: var(--green);
+  }
+  .status-idle {
+    font-size: 11px;
+    color: var(--muted);
   }
 
-  .badge.active {
-    background: var(--online-bg);
-    color: var(--online);
-  }
-
-  /* Login */
-  .login-wrap {
-    display: flex; align-items: center; justify-content: center;
+  /* ── Login ── */
+  .login-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     min-height: 100vh;
   }
-
-  .login-card {
+  .login-box {
     background: var(--surface);
     border-radius: 16px;
-    padding: 40px 32px;
-    width: 100%; max-width: 360px;
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 360px;
   }
-
-  .login-header {
-    display: flex; align-items: center; gap: 10px;
-    margin-bottom: 28px;
+  .login-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 32px;
   }
-
-  .login-title { font-size: 20px; font-weight: 600; }
-
-  .login-field { margin-bottom: 14px; }
-  .login-field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+  .login-logo-icon {
+    width: 36px; height: 36px;
+    background: var(--blue);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px;
+  }
+  .login-logo-name { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
+  .login-field { margin-bottom: 12px; }
+  .login-field label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
   .login-field input { width: 100%; }
-
   .login-btn {
     width: 100%;
     background: var(--btn-bg);
@@ -440,21 +520,22 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     border-radius: 8px;
     cursor: pointer;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     padding: 12px;
-    margin-top: 8px;
+    margin-top: 10px;
+    transition: opacity 0.12s;
   }
-
-  .error-msg { color: #ef4444; font-size: 12px; margin-top: 8px; text-align: center; }
+  .login-btn:hover { opacity: 0.85; }
+  .login-err { color: #ef4444; font-size: 12px; margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
 
-<div id="login-view" class="login-wrap" style="display:none">
-  <div class="login-card">
-    <div class="login-header">
-      <div class="logo-icon">&#10052;</div>
-      <span class="login-title">reno</span>
+<div id="login-view" class="login-page" style="display:none">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-icon">&#10052;</div>
+      <span class="login-logo-name">reno</span>
     </div>
     <div class="login-field">
       <label>Username</label>
@@ -465,83 +546,77 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       <input type="password" id="login-pass" autocomplete="current-password" />
     </div>
     <button class="login-btn" onclick="doLogin()">Login</button>
-    <div class="error-msg" id="login-error"></div>
+    <div class="login-err" id="login-error"></div>
   </div>
 </div>
 
-<div id="app-view" class="app" style="display:none">
-  <div class="top-bar">
-    <button class="light-btn" onclick="toggleTheme()">&#9728; light</button>
-  </div>
+<div id="app-view" style="display:none">
+  <div class="wrap">
 
-  <div class="header">
-    <div class="logo-icon">&#10052;</div>
-    <span class="logo-text">reno</span>
-  </div>
+    <div class="hdr">
+      <div class="logo">
+        <div class="logo-icon">&#10052;</div>
+        <span class="logo-name">reno</span>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()">&#9728; light</button>
+    </div>
 
-  <div class="two-col">
-    <div class="card" style="margin-bottom:0">
-      <div class="section-title">Edges</div>
-      <div class="node-list" id="edge-list"><div class="empty">Loading...</div></div>
+    <div class="two-col">
+      <div class="card" style="margin-bottom:0">
+        <div class="section-title">Edges</div>
+        <div id="edge-list"><div class="empty-msg">No edges</div></div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="section-title">Stations</div>
+        <div id="station-list"><div class="empty-msg">No stations</div></div>
+      </div>
     </div>
-    <div class="card" style="margin-bottom:0">
-      <div class="section-title">Stations</div>
-      <div class="node-list" id="station-list"><div class="empty">Loading...</div></div>
-    </div>
-  </div>
 
-  <div class="card">
-    <div class="section-title">Create Tunnel</div>
-    <div class="form-grid">
-      <div class="form-col">
-        <label>Edge</label>
-        <select id="form-edge">
-          <option value="">Select edge...</option>
-        </select>
+    <div class="card">
+      <div class="section-title">Create Tunnel</div>
+      <div class="form-row">
+        <div class="field f-edge">
+          <label>Edge</label>
+          <select id="form-edge"><option value="">Select...</option></select>
+        </div>
+        <div class="field f-station">
+          <label>Station</label>
+          <select id="form-station"><option value="">Select...</option></select>
+        </div>
+        <div class="field f-proto">
+          <label>Protocol</label>
+          <select id="form-protocol">
+            <option>TCP</option><option>UDP</option><option>QUIC</option>
+            <option>HTTP</option><option>HTTPS</option>
+          </select>
+        </div>
+        <div class="field f-ip">
+          <label>IP</label>
+          <input type="text" id="form-ip" placeholder="127.0.0.1" value="127.0.0.1" />
+        </div>
+        <div class="field f-port">
+          <label>Port</label>
+          <input type="number" id="form-port" placeholder="8080" />
+        </div>
+        <div class="field f-rport">
+          <label>Remote Port</label>
+          <input type="number" id="form-remote-port" placeholder="13000" />
+        </div>
       </div>
-      <div class="form-col">
-        <label>Station</label>
-        <select id="form-station">
-          <option value="">Select station...</option>
-        </select>
-      </div>
-      <div class="form-col">
-        <label>Protocol</label>
-        <select id="form-protocol">
-          <option>TCP</option>
-          <option>UDP</option>
-          <option>QUIC</option>
-          <option>HTTP</option>
-          <option>HTTPS</option>
-        </select>
-      </div>
-      <div class="form-col">
-        <label>Local IP</label>
-        <input type="text" id="form-ip" placeholder="127.0.0.1" value="127.0.0.1" />
-      </div>
-      <div class="form-col">
-        <label>Local Port</label>
-        <input type="number" id="form-port" placeholder="8080" />
-      </div>
-      <div class="form-col">
-        <label>Remote Port (on Station)</label>
-        <input type="number" id="form-remote-port" placeholder="13000" />
-      </div>
-      <div class="form-col full">
-        <label>Name</label>
-        <input type="text" id="form-name" placeholder="my-service" />
+      <div class="form-row2">
+        <div class="field f-name">
+          <label>Name</label>
+          <input type="text" id="form-name" placeholder="my-service" />
+        </div>
+        <button class="btn" onclick="createTunnel()">Create</button>
       </div>
     </div>
-    <div class="form-actions">
-      <button class="btn-primary" onclick="createTunnel()">Create</button>
-    </div>
-  </div>
 
-  <div class="card">
-    <div class="section-title">Tunnels</div>
-    <div class="tunnel-list" id="tunnel-list">
-      <div class="empty">Loading...</div>
+    <div class="card">
+      <div class="section-title">Tunnels</div>
+      <div id="tunnel-list"><div class="empty-msg">No tunnels yet</div></div>
     </div>
+
   </div>
 </div>
 
@@ -577,8 +652,6 @@ function connectWS() {
     const data = JSON.parse(e.data);
     edges    = data.edges    || [];
     stations = data.stations || [];
-    // Don't overwrite local tunnel state right after a create/delete
-    // (KV may not have propagated yet); let it settle after 3 seconds
     if (Date.now() - lastMutation > 3000) {
       tunnels = data.tunnels || [];
       renderTunnels();
@@ -591,7 +664,6 @@ function connectWS() {
   ws.onclose = function() {
     ws = null;
     setTimeout(function() {
-      // Only reconnect if app is visible (not logged out)
       if (document.getElementById('app-view').style.display !== 'none') connectWS();
     }, 3000);
   };
@@ -629,28 +701,28 @@ async function refresh() {
 
 function renderEdges() {
   const el = document.getElementById('edge-list');
-  if (!edges.length) { el.innerHTML = '<div class="empty">No edges</div>'; return; }
+  if (!edges.length) { el.innerHTML = '<div class="empty-msg">No edges</div>'; return; }
   el.innerHTML = edges.map(e => {
     const cls = e.status === 'online' ? 'online' : 'offline';
-    return '<div class="node-item">' +
-      '<span class="dot ' + cls + '"></span>' +
-      '<span class="node-name">' + esc(e.name) + '</span>' +
-      '<span class="status-text ' + cls + '">' + e.status + '</span>' +
-      '<button class="del-btn" data-edge-id="' + esc(e.id) + '">&#x2715;</button>' +
+    return '<div class="node-row">' +
+      '<span class="node-dot ' + cls + '"></span>' +
+      '<span class="node-label">' + esc(e.name) + '</span>' +
+      '<span class="node-status ' + cls + '">' + e.status + '</span>' +
+      '<button class="icon-btn" data-edge-id="' + esc(e.id) + '">&#x2715;</button>' +
     '</div>';
   }).join('');
 }
 
 function renderStations() {
   const el = document.getElementById('station-list');
-  if (!stations.length) { el.innerHTML = '<div class="empty">No stations</div>'; return; }
+  if (!stations.length) { el.innerHTML = '<div class="empty-msg">No stations</div>'; return; }
   el.innerHTML = stations.map(s => {
     const cls = s.status === 'online' ? 'online' : 'offline';
-    return '<div class="node-item">' +
-      '<span class="dot ' + cls + '"></span>' +
-      '<span class="node-name">' + esc(s.name) + '</span>' +
-      '<span class="status-text ' + cls + '">' + s.status + '</span>' +
-      '<button class="del-btn" data-station-id="' + esc(s.id) + '">&#x2715;</button>' +
+    return '<div class="node-row">' +
+      '<span class="node-dot ' + cls + '"></span>' +
+      '<span class="node-label">' + esc(s.name) + '</span>' +
+      '<span class="node-status ' + cls + '">' + s.status + '</span>' +
+      '<button class="icon-btn" data-station-id="' + esc(s.id) + '">&#x2715;</button>' +
     '</div>';
   }).join('');
 }
@@ -658,7 +730,7 @@ function renderStations() {
 function renderEdgeSelect() {
   const sel = document.getElementById('form-edge');
   const val = sel.value;
-  sel.innerHTML = '<option value="">Select edge...</option>';
+  sel.innerHTML = '<option value="">Select...</option>';
   for (const e of edges) {
     const opt = document.createElement('option');
     opt.value = e.id;
@@ -671,7 +743,7 @@ function renderEdgeSelect() {
 function renderStationSelect() {
   const sel = document.getElementById('form-station');
   const val = sel.value;
-  sel.innerHTML = '<option value="">Select station...</option>';
+  sel.innerHTML = '<option value="">Select...</option>';
   for (const s of stations) {
     const opt = document.createElement('option');
     opt.value = s.id;
@@ -683,28 +755,30 @@ function renderStationSelect() {
 
 function renderTunnels() {
   const list = document.getElementById('tunnel-list');
-  if (!tunnels.length) { list.innerHTML = '<div class="empty">No tunnels yet</div>'; return; }
+  if (!tunnels.length) { list.innerHTML = '<div class="empty-msg">No tunnels yet</div>'; return; }
   list.innerHTML = tunnels.map(t => {
     const edgeName    = (edges.find(e => e.id === t.edge_id) || {}).name || t.edge_id || '?';
     const stationName = (stations.find(s => s.id === t.station_id) || {}).name || t.station_id || '?';
-    const statusCls   = t.status === 'active' ? 'badge active' : 'badge';
-    return '<div class="tunnel-item">' +
+    const statusHtml  = t.status === 'active'
+      ? '<span class="status-active">active</span>'
+      : '<span class="status-idle">idle</span>';
+    return '<div class="tunnel-row">' +
       '<div class="tunnel-info">' +
         '<div class="tunnel-name">' + esc(t.name) + '</div>' +
-        '<div class="tunnel-meta">' + esc(t.local_host) + ':' + t.local_port + ' &rarr; :' + t.remote_port + '</div>' +
-        '<div class="tunnel-route">' + esc(edgeName) + ' &rarr; ' + esc(stationName) + '</div>' +
+        '<div class="tunnel-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div>' +
+        '<div class="tunnel-sub">' + esc(edgeName) + ' \u2192 ' + esc(stationName) + '</div>' +
       '</div>' +
       '<div class="tunnel-right">' +
-        '<span class="badge">' + esc(t.protocol) + '</span>' +
-        '<span class="' + statusCls + '">' + esc(t.status) + '</span>' +
-        '<button class="del-btn" data-tunnel-id="' + esc(t.id) + '">&#x2715;</button>' +
+        '<span class="proto-text">' + esc(t.protocol) + '</span>' +
+        statusHtml +
+        '<button class="icon-btn" data-tunnel-id="' + esc(t.id) + '">&#x2715;</button>' +
       '</div>' +
     '</div>';
   }).join('');
 }
 
 document.addEventListener('click', function(e) {
-  const btn = e.target.closest('.del-btn');
+  const btn = e.target.closest('.icon-btn');
   if (!btn) return;
   if (btn.dataset.tunnelId)  deleteTunnel(btn.dataset.tunnelId);
   if (btn.dataset.edgeId)    deleteEdge(btn.dataset.edgeId);
@@ -766,7 +840,7 @@ function deleteStation(id) {
 
 function toggleTheme() {
   document.body.classList.toggle('light');
-  document.querySelector('.light-btn').textContent =
+  document.querySelector('.theme-btn').textContent =
     document.body.classList.contains('light') ? '\uD83C\uDF19 dark' : '\u2600 light';
 }
 
