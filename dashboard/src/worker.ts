@@ -1527,7 +1527,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       } catch {}
     };
     await sendState();
-    const timer = setInterval(sendState, 5000);
+    const timer = setInterval(sendState, 2500);
     server.addEventListener('close', () => clearInterval(timer));
     return new Response(null, { status: 101, webSocket: client } as ResponseInit);
   }
@@ -1698,7 +1698,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const updates = await request.json() as Record<string, number>;
     const traffic = await getTraffic(env);
     for (const [id, bytes] of Object.entries(updates)) {
-      traffic[id] = bytes; // station reports cumulative total; replace (not add)
+      traffic[id] = Math.max(traffic[id] || 0, bytes); // keep highest ever seen; never go backwards
     }
     await saveTraffic(env, traffic);
     return json({ ok: true });

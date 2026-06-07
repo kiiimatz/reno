@@ -719,10 +719,10 @@ func pollTunnelsLoop(cfg Config) {
 	}
 }
 
-// reportTrafficLoop sends cumulative tunnel byte counts to the dashboard every 5s.
+// reportTrafficLoop sends cumulative tunnel byte counts to the dashboard every 2.5s.
 func reportTrafficLoop(cfg Config) {
 	for {
-		time.Sleep(5 * time.Second)
+		time.Sleep(2500 * time.Millisecond)
 		if cfg.DashboardURL == "" || cfg.APISecret == "" || stationID == "" {
 			continue
 		}
