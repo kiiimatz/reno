@@ -725,10 +725,15 @@ function connectWS() {
     const data = JSON.parse(e.data);
     edges    = data.edges    || [];
     stations = data.stations || [];
-    if (Date.now() - lastMutation > 3000) {
+    // Only overwrite tunnel list after 60s guard (Cloudflare KV eventual consistency
+    // can take up to ~60s to propagate across PoPs — guard prevents stale data from
+    // wiping out tunnels we just created/deleted).
+    if (Date.now() - lastMutation > 60000) {
       tunnels = data.tunnels || [];
-      renderTunnels();
     }
+    // Always re-render tunnels so active/idle status updates in real-time
+    // even while the tunnel list is guarded.
+    renderTunnels();
     renderEdges();
     renderStations();
     renderEdgeSelect();
@@ -987,10 +992,10 @@ export default {
         ]);
         const now = Date.now();
         for (const e of edgeList) {
-          if (now - new Date(e.lastSeen).getTime() > 20000) e.status = 'offline';
+          if (now - new Date(e.lastSeen).getTime() > 35000) e.status = 'offline';
         }
         for (const s of stationList) {
-          if (now - new Date(s.lastSeen).getTime() > 20000) s.status = 'offline';
+          if (now - new Date(s.lastSeen).getTime() > 35000) s.status = 'offline';
         }
         try {
           server.send(JSON.stringify({ edges: edgeList, stations: stationList, tunnels: tunnelList }));
