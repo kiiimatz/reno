@@ -972,7 +972,8 @@ func pollTunnels(cfg Config) {
 	// Poll immediately on start so tunnels are ready before any edge connects
 	doPollTunnels(cfg)
 	for {
-		time.Sleep(3 * time.Second)
+		// Heartbeat already syncs tunnels every 5s; this is just a fallback
+		time.Sleep(30 * time.Second)
 		doPollTunnels(cfg)
 	}
 }
@@ -1031,16 +1032,41 @@ func updateListeners(newTunnels []protocol.TunnelConfig) {
 }
 
 func heartbeat(cfg Config) {
-	for {
-		time.Sleep(10 * time.Second)
+	doHeartbeat := func() {
 		if stationID == "" {
-			continue
+			return
 		}
 		url := fmt.Sprintf("%s/api/stations/%s/heartbeat?secret=%s", cfg.DashboardURL, stationID, cfg.APISecret)
 		resp, err := http.Post(url, "application/json", nil)
-		if err == nil {
-			resp.Body.Close()
+		if err != nil {
+			return
 		}
+		defer resp.Body.Close()
+		// Heartbeat response includes current tunnel list for immediate sync
+		var result struct {
+			Tunnels []protocol.TunnelConfig `json:"tunnels"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return
+		}
+		if result.Tunnels == nil {
+			return
+		}
+		tunnelsMu.Lock()
+		changed := !tunnelsEqual(tunnels, result.Tunnels)
+		tunnels = result.Tunnels
+		tunnelsMu.Unlock()
+		if changed {
+			log.Printf("Tunnels updated via heartbeat: %d tunnel(s)", len(result.Tunnels))
+			updateListeners(result.Tunnels)
+			broadcastTunnelSync()
+		}
+	}
+	// Send immediately on startup so dashboard shows online right away
+	doHeartbeat()
+	for {
+		time.Sleep(5 * time.Second)
+		doHeartbeat()
 	}
 }
 
@@ -1149,16 +1175,21 @@ func registerEdgeWithDashboard(cfg Config, name string) {
 }
 
 func edgeHeartbeatLoop(cfg Config) {
-	for {
-		time.Sleep(10 * time.Second)
+	doHeartbeat := func() {
 		if dashboardEdgeID == "" {
-			continue
+			return
 		}
 		url := fmt.Sprintf("%s/api/edges/%s/heartbeat?secret=%s", cfg.DashboardURL, dashboardEdgeID, cfg.APISecret)
 		resp, err := http.Post(url, "application/json", nil)
 		if err == nil {
 			resp.Body.Close()
 		}
+	}
+	// Send immediately on startup
+	doHeartbeat()
+	for {
+		time.Sleep(5 * time.Second)
+		doHeartbeat()
 	}
 }
 

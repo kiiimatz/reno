@@ -118,7 +118,7 @@ async function jwtVerify(token: string, secret: string): Promise<object | null> 
 // --- KV helpers ---
 
 async function getEdges(kv: KVNamespace): Promise<Edge[]> {
-  const data = await kv.get('edges', { cacheTtl: 0 });
+  const data = await kv.get('edges');
   return data ? JSON.parse(data) : [];
 }
 
@@ -127,7 +127,7 @@ async function saveEdges(kv: KVNamespace, edges: Edge[]): Promise<void> {
 }
 
 async function getStations(kv: KVNamespace): Promise<Station[]> {
-  const data = await kv.get('stations', { cacheTtl: 0 });
+  const data = await kv.get('stations');
   return data ? JSON.parse(data) : [];
 }
 
@@ -136,7 +136,7 @@ async function saveStations(kv: KVNamespace, stations: Station[]): Promise<void>
 }
 
 async function getTunnels(kv: KVNamespace): Promise<Tunnel[]> {
-  const data = await kv.get('tunnels', { cacheTtl: 0 });
+  const data = await kv.get('tunnels');
   return data ? JSON.parse(data) : [];
 }
 
@@ -992,10 +992,10 @@ export default {
         ]);
         const now = Date.now();
         for (const e of edgeList) {
-          if (now - new Date(e.lastSeen).getTime() > 35000) e.status = 'offline';
+          if (now - new Date(e.lastSeen).getTime() > 45000) e.status = 'offline';
         }
         for (const s of stationList) {
-          if (now - new Date(s.lastSeen).getTime() > 35000) s.status = 'offline';
+          if (now - new Date(s.lastSeen).getTime() > 45000) s.status = 'offline';
         }
         try {
           server.send(JSON.stringify({ edges: edgeList, stations: stationList, tunnels: tunnelList }));
@@ -1168,7 +1168,10 @@ export default {
       if (secret !== env.API_SECRET) return unauthorized();
 
       const stationId = heartbeatMatch[1];
-      const stations = await getStations(env.RENO_KV);
+      const [stations, tunnels] = await Promise.all([
+        getStations(env.RENO_KV),
+        getTunnels(env.RENO_KV),
+      ]);
       const station = stations.find(s => s.id === stationId);
       if (station) {
         station.lastSeen = new Date().toISOString();
@@ -1176,7 +1179,8 @@ export default {
         await saveStations(env.RENO_KV, stations);
       }
 
-      return json({ ok: true });
+      // Return tunnel list so station can sync immediately without a separate poll
+      return json({ ok: true, tunnels });
     }
 
     // Require auth for remaining routes
