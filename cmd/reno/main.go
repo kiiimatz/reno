@@ -558,15 +558,27 @@ type edgeConn struct {
 }
 
 type tcpChannel struct {
-	conn   net.Conn
-	mu     sync.Mutex
-	closed bool
+	conn     net.Conn
+	mu       sync.Mutex
+	closed   bool
+	tunnelID string
 }
 
 type udpReturn struct {
 	pc       net.PacketConn
 	srcAddr  net.Addr
 	lastSeen time.Time
+	tunnelID string
+}
+
+var tunnelBytesMap sync.Map // tunnelID string → *int64 (cumulative bytes)
+
+func addTunnelBytes(tunnelID string, n int64) {
+	if tunnelID == "" || n <= 0 {
+		return
+	}
+	v, _ := tunnelBytesMap.LoadOrStore(tunnelID, new(int64))
+	atomic.AddInt64(v.(*int64), n)
 }
 
 // ─── Station daemon ───────────────────────────────────────────────────────────
@@ -693,6 +705,30 @@ func pollTunnelsLoop(cfg Config) {
 	}
 }
 
+// reportTrafficLoop sends cumulative tunnel byte counts to the dashboard every 5s.
+func reportTrafficLoop(cfg Config) {
+	for {
+		time.Sleep(5 * time.Second)
+		if cfg.DashboardURL == "" || cfg.APISecret == "" || stationID == "" {
+			continue
+		}
+		stats := make(map[string]int64)
+		tunnelBytesMap.Range(func(k, v any) bool {
+			stats[k.(string)] = atomic.LoadInt64(v.(*int64))
+			return true
+		})
+		if len(stats) == 0 {
+			continue
+		}
+		data, _ := json.Marshal(stats)
+		url := fmt.Sprintf("%s/api/traffic?secret=%s&station_id=%s", cfg.DashboardURL, cfg.APISecret, stationID)
+		resp, err := http.Post(url, "application/json", bytes.NewReader(data))
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+}
+
 func runStationDaemon() {
 	cfg := loadConfig()
 	if cfg.Station.Name == "" {
@@ -711,6 +747,7 @@ func runStationDaemon() {
 	go stationHeartbeatLoop(cfg)
 	go pollTunnelsLoop(cfg)
 	go cleanupUDPSessions()
+	go reportTrafficLoop(cfg)
 
 	tunnelsMu.RLock()
 	cur := append([]protocol.TunnelConfig{}, tunnels...)
@@ -885,6 +922,7 @@ func handleEdge(conn net.Conn, cfg Config) {
 				ch.mu.Lock()
 				if !ch.closed {
 					ch.conn.Write(msg.Payload)
+					addTunnelBytes(ch.tunnelID, int64(len(msg.Payload)))
 				}
 				ch.mu.Unlock()
 			} else {
@@ -894,6 +932,7 @@ func handleEdge(conn net.Conn, cfg Config) {
 				if isUDP {
 					ret.lastSeen = time.Now()
 					ret.pc.WriteTo(msg.Payload, ret.srcAddr)
+					addTunnelBytes(ret.tunnelID, int64(len(msg.Payload)))
 				}
 			}
 		case protocol.MsgChannelClose:
@@ -993,7 +1032,7 @@ func handleTCPTunnelConn(clientConn net.Conn, t protocol.TunnelConfig) {
 		clientConn.Close()
 		return
 	}
-	ch := &tcpChannel{conn: clientConn}
+	ch := &tcpChannel{conn: clientConn, tunnelID: t.ID}
 	tcpChannelsMu.Lock()
 	tcpChannels[channelID] = ch
 	tcpChannelsMu.Unlock()
@@ -1007,6 +1046,7 @@ func handleTCPTunnelConn(clientConn net.Conn, t protocol.TunnelConfig) {
 	for {
 		n, err := clientConn.Read(buf)
 		if n > 0 {
+			addTunnelBytes(t.ID, int64(n))
 			edge.writer.WriteData(channelID, buf[:n])
 		}
 		if err != nil {
@@ -1040,6 +1080,7 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 		}
 		pkt := make([]byte, n)
 		copy(pkt, buf[:n])
+		addTunnelBytes(t.ID, int64(n))
 		srcKey := src.String()
 
 		sessionsMu.Lock()
@@ -1054,7 +1095,7 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 			sess = &udpSession{channelID: channelID, lastSeen: time.Now()}
 			sessions[srcKey] = sess
 			udpReturnMu.Lock()
-			udpReturns[channelID] = &udpReturn{pc: pc, srcAddr: src, lastSeen: time.Now()}
+			udpReturns[channelID] = &udpReturn{pc: pc, srcAddr: src, lastSeen: time.Now(), tunnelID: t.ID}
 			udpReturnMu.Unlock()
 			edge.writer.WriteControl(protocol.MsgChannelOpen, protocol.ChannelOpenMsg{
 				ChannelID: channelID,

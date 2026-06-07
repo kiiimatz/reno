@@ -37,6 +37,7 @@ interface Tunnel {
   status: 'active' | 'idle';
   enabled: boolean;
   created_at: string;
+  bytes?: number;
 }
 
 // --- Crypto utilities ---
@@ -144,6 +145,16 @@ async function getState(env: Env): Promise<State> {
 
 async function saveState(env: Env, state: State): Promise<void> {
   await env.RENO_R2.put('state', JSON.stringify(state));
+}
+
+async function getTraffic(env: Env): Promise<Record<string, number>> {
+  const obj = await env.RENO_R2.get('traffic');
+  if (!obj) return {};
+  return await obj.json() as Record<string, number>;
+}
+
+async function saveTraffic(env: Env, traffic: Record<string, number>): Promise<void> {
+  await env.RENO_R2.put('traffic', JSON.stringify(traffic));
 }
 
 async function getEdges(env: Env): Promise<Edge[]> { return (await getState(env)).edges; }
@@ -623,13 +634,24 @@ html, body {
 
 .tunnel-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   gap: 12px;
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
   transition: background 0.15s;
   cursor: grab;
+}
+
+.t-bytes {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--proto-text);
+  background: var(--proto-bg);
+  padding: 3px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  font-family: var(--font);
 }
 .tunnel-item:active { cursor: grabbing; }
 .tunnel-item:last-child { border-bottom: none; }
@@ -1162,6 +1184,7 @@ function renderTunnels() {
         '<div class="t-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div>' +
       '</div>' +
       '<span class="t-badge ' + badgeCls + '" data-toggle-id="' + esc(t.id) + '">' + badgeTxt + '</span>' +
+      '<span class="t-bytes">' + formatBytes(t.bytes || 0) + '</span>' +
       '<button class="t-del" data-tunnel-id="' + esc(t.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
   }).join('');
@@ -1296,6 +1319,16 @@ function esc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function formatBytes(b) {
+  if (b <= 0) return '0.0 MB';
+  const mb = b / (1024 * 1024);
+  if (mb < 1000) return mb.toFixed(1) + ' MB';
+  const gb = b / (1024 * 1024 * 1024);
+  if (gb < 1000) return gb.toFixed(1) + ' GB';
+  const tb = b / (1024 * 1024 * 1024 * 1024);
+  return tb.toFixed(1) + ' TB';
+}
+
 init();
 </script>
 </body>
@@ -1367,10 +1400,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const sendState = async () => {
       try {
         const { edges, stations, tunnels } = await getState(env);
+        const traffic = await getTraffic(env);
         server.send(JSON.stringify({
           edges: withStatus(edges),
           stations: withStatus(stations),
-          tunnels,
+          tunnels: tunnels.map(t => ({ ...t, bytes: traffic[t.id] ?? 0 })),
         }));
       } catch {}
     };
@@ -1537,6 +1571,17 @@ async function handle(request: Request, env: Env): Promise<Response> {
     tunnel.enabled = tunnel.enabled === false ? true : false;
     await saveTunnels(env, tunnels);
     return json({ tunnel });
+  }
+
+  if (path === '/api/traffic' && method === 'POST') {
+    if (!secretOk) return unauthorized();
+    const updates = await request.json() as Record<string, number>;
+    const traffic = await getTraffic(env);
+    for (const [id, bytes] of Object.entries(updates)) {
+      traffic[id] = bytes; // station reports cumulative total; replace (not add)
+    }
+    await saveTraffic(env, traffic);
+    return json({ ok: true });
   }
 
   return new Response('Not Found', { status: 404 });
