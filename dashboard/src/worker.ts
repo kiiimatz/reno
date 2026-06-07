@@ -932,6 +932,19 @@ init();
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      return await handle(request, env);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.stack ?? e.message : String(e);
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+};
+
+async function handle(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -1270,5 +1283,4 @@ export default {
     }
 
     return new Response('Not Found', { status: 404 });
-  }
-};
+}
