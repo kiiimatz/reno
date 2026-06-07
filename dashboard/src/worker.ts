@@ -1093,11 +1093,15 @@ async function handle(request: Request, env: Env): Promise<Response> {
   const stationConnMatch = path.match(/^\/api\/stations\/([^/]+)\/connect$/);
   if (stationConnMatch && method === 'GET') {
     const [, stationId] = stationConnMatch;
-    const station = (await getStations(env)).find(s => s.id === stationId);
+    const stations = await getStations(env);
+    // "auto" = connect to first available station
+    const station = stationId === 'auto'
+      ? withStatus(stations).find(s => s.status === 'online') ?? stations[0]
+      : stations.find(s => s.id === stationId);
     if (!station) return json({ error: 'station not found' }, 404);
     const plain = `${station.host}:${station.controlPort}:${station.certFingerprint}`;
     const encrypted = await cryptoEncrypt(env.API_SECRET, plain);
-    return json({ encrypted_info: encrypted, station_id: stationId });
+    return json({ encrypted_info: encrypted, station_id: station.id });
   }
 
   if (path === '/api/stations' && method === 'GET') {
@@ -1114,7 +1118,9 @@ async function handle(request: Request, env: Env): Promise<Response> {
   // ── Tunnels ─────────────────────────────────────────────────────────────────
 
   if (path === '/api/tunnels' && method === 'GET') {
-    return json({ tunnels: await getTunnels(env) });
+    const stationFilter = url.searchParams.get('station_id');
+    const tunnels = await getTunnels(env);
+    return json({ tunnels: stationFilter ? tunnels.filter(t => t.station_id === stationFilter) : tunnels });
   }
 
   if (path === '/api/tunnels' && method === 'POST') {

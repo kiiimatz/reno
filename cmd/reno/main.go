@@ -623,7 +623,7 @@ func pollTunnelsLoop(cfg Config) {
 		if cfg.DashboardURL == "" || cfg.APISecret == "" {
 			continue
 		}
-		url := fmt.Sprintf("%s/api/tunnels?secret=%s", cfg.DashboardURL, cfg.APISecret)
+		url := fmt.Sprintf("%s/api/tunnels?secret=%s&station_id=%s", cfg.DashboardURL, cfg.APISecret, stationID)
 		resp, err := http.Get(url)
 		if err != nil {
 			continue
@@ -1285,12 +1285,20 @@ func edgeRun(cfg Config, stationRef string) error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("station connect HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
 	var result struct {
 		EncryptedInfo string `json:"encrypted_info"`
 		StationID     string `json:"station_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("decode station info: %v", err)
+	}
+	if result.EncryptedInfo == "" {
+		return fmt.Errorf("station connect: empty encrypted_info")
 	}
 
 	plain, err := cryptoDecrypt(cfg.APISecret, result.EncryptedInfo)
