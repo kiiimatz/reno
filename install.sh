@@ -53,21 +53,32 @@ fi
 
 echo "Installed: $DEST"
 
+# On Linux, service install needs root (systemd). Use sudo if not already root.
+maybe_sudo() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo &>/dev/null; then
+    sudo "$@"
+  else
+    "$@"
+  fi
+}
+
 # Optional: start services based on argument
 # Usage: install.sh [station|edge|both]
 case "${1:-}" in
   station)
     echo ""
-    reno station
+    maybe_sudo reno station
     ;;
   edge)
     echo ""
-    reno edge
+    maybe_sudo reno edge
     ;;
   both)
     echo ""
-    reno station
-    reno edge
+    maybe_sudo reno station
+    maybe_sudo reno edge
     ;;
   *)
     echo ""
