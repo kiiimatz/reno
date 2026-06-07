@@ -53,14 +53,24 @@ fi
 
 echo "Installed: $DEST"
 
-# On Linux, service install needs root (systemd). Use sudo if not already root.
+# On Linux/macOS, service install needs root. Use sudo when available.
+# When piped (curl|bash), stdin is not a tty so sudo can't prompt — fall back to instructions.
 maybe_sudo() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
-  elif command -v sudo &>/dev/null; then
+  elif sudo -n true 2>/dev/null; then
+    # sudo credentials are cached or NOPASSWD — no prompt needed
+    sudo "$@"
+  elif [ -t 0 ] && [ -t 1 ]; then
+    # stdin/stdout are both ttys — interactive, can prompt
     sudo "$@"
   else
-    "$@"
+    echo ""
+    echo "  Root is required to install the service."
+    echo "  Run this manually to finish setup:"
+    echo ""
+    echo "    sudo $*"
+    echo ""
   fi
 }
 
