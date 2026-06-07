@@ -1107,7 +1107,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       ? withStatus(stations).find(s => s.status === 'online') ?? stations[0]
       : stations.find(s => s.id === stationId);
     if (!station) return json({ error: 'station not found' }, 404);
-    const plain = `${station.host}:${station.controlPort}:${station.certFingerprint}`;
+    const plain = `${station.host}|${station.controlPort}|${station.certFingerprint}`;
     const encrypted = await cryptoEncrypt(env.API_SECRET, plain);
     return json({ encrypted_info: encrypted, station_id: station.id });
   }

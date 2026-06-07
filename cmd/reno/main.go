@@ -1368,13 +1368,13 @@ func edgeRun(cfg Config, stationRef string) error {
 		return fmt.Errorf("decrypt station info: %v", err)
 	}
 
-	// plain = "host:port:fingerprint"
-	parts := strings.SplitN(plain, ":", 3)
+	// plain = "host|port|fingerprint"  (| separator to avoid IPv6 colon conflicts)
+	parts := strings.SplitN(plain, "|", 3)
 	if len(parts) != 3 {
 		return fmt.Errorf("invalid station info: %q", plain)
 	}
 	host, portStr, fingerprint := parts[0], parts[1], parts[2]
-	port, _ := strconv.Atoi(portStr)
+	_, _ = strconv.Atoi(portStr) // validate port is numeric; use portStr directly in JoinHostPort
 
 	tlsCfg := &tls.Config{
 		InsecureSkipVerify: true,
@@ -1390,16 +1390,17 @@ func edgeRun(cfg Config, stationRef string) error {
 		},
 	}
 
+	addr := net.JoinHostPort(host, portStr)
 	conn, err := tls.DialWithDialer(&net.Dialer{
 		Timeout:   10 * time.Second,
 		KeepAlive: 15 * time.Second,
-	}, "tcp", fmt.Sprintf("%s:%d", host, port), tlsCfg)
+	}, "tcp", addr, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("dial station: %v", err)
 	}
 	defer conn.Close()
 
-	log.Printf("Connected to station %s:%d", host, port)
+	log.Printf("Connected to station %s", addr)
 	writer := protocol.NewWriter(conn)
 	writer.WriteControl(protocol.MsgAuth, protocol.AuthMsg{Secret: cfg.APISecret, Version: "1", DashboardEdgeID: dashboardEdgeID})
 
