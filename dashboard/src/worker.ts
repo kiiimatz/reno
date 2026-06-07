@@ -223,9 +223,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
   /* ── Layout ── */
   .wrap {
-    max-width: 780px;
+    max-width: 680px;
     margin: 0 auto;
-    padding: 36px 20px 60px;
+    padding: 40px 20px 60px;
   }
 
   /* ── Header ── */
@@ -254,16 +254,23 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   }
   .theme-btn {
     margin-left: auto;
-    background: none;
-    border: 1.5px solid var(--border);
+    background: #f4f4f5;
+    border: 1.5px solid #d4d4d8;
     border-radius: 20px;
-    color: var(--text);
+    color: #18181b;
     cursor: pointer;
-    font-size: 12px;
-    padding: 5px 14px;
-    transition: border-color 0.15s;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 16px;
+    transition: opacity 0.15s;
+    white-space: nowrap;
   }
-  .theme-btn:hover { border-color: var(--muted); }
+  body.light .theme-btn {
+    background: #18181b;
+    border-color: #3f3f46;
+    color: #f4f4f5;
+  }
+  .theme-btn:hover { opacity: 0.85; }
 
   /* ── Card ── */
   .card {
@@ -271,6 +278,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     border-radius: 14px;
     padding: 22px 24px;
     margin-bottom: 10px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.35);
   }
 
   .section-title {
@@ -558,7 +566,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         <div class="logo-icon">&#10052;</div>
         <span class="logo-name">reno</span>
       </div>
-      <button class="theme-btn" onclick="toggleTheme()">&#9728; light</button>
+      <button class="theme-btn" onclick="toggleTheme()">&#x1F319; dark</button>
     </div>
 
     <div class="two-col">
@@ -841,7 +849,7 @@ function deleteStation(id) {
 function toggleTheme() {
   document.body.classList.toggle('light');
   document.querySelector('.theme-btn').textContent =
-    document.body.classList.contains('light') ? '\uD83C\uDF19 dark' : '\u2600 light';
+    document.body.classList.contains('light') ? '\u2600\uFE0F light' : '\uD83C\uDF19 dark';
 }
 
 function esc(str) {
