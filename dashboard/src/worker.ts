@@ -1069,9 +1069,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === '/api/stations/register' && method === 'POST') {
     if (!secretOk) return unauthorized();
-    const body = await request.json() as { id: string; name: string; control_port: number; cert_fingerprint: string };
+    const body = await request.json() as { id: string; name: string; control_port: number; cert_fingerprint: string; host?: string };
     const now = new Date().toISOString();
-    const host = request.headers.get('CF-Connecting-IP') || '';
+    // Prefer the IPv4 address explicitly sent by the station; fall back to CF-Connecting-IP
+    const host = body.host || request.headers.get('CF-Connecting-IP') || '';
     const stations = await getStations(env);
     let station = stations.find(s => s.id === body.id);
     if (station) {

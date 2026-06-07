@@ -584,6 +584,7 @@ func registerStation(cfg Config) {
 		"name":             cfg.Station.Name,
 		"control_port":     cfg.Station.ControlPort,
 		"cert_fingerprint": certFP,
+		"host":             getPublicIPv4(),
 	}
 	data, _ := json.Marshal(body)
 	url := fmt.Sprintf("%s/api/stations/register?secret=%s", cfg.DashboardURL, cfg.APISecret)
@@ -743,8 +744,10 @@ func computeFingerprint() {
 }
 
 
-func getPublicIP() string {
-	resp, err := http.Get("https://api.ipify.org")
+// getPublicIPv4 returns this host's public IPv4 address.
+// Uses api4.ipify.org which always responds over IPv4.
+func getPublicIPv4() string {
+	resp, err := http.Get("https://api4.ipify.org")
 	if err != nil {
 		return ""
 	}
