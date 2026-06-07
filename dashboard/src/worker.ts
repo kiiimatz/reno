@@ -623,7 +623,7 @@ html, body {
 
 .tunnel-item {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 12px;
   align-items: center;
   padding: 12px 16px;
@@ -662,7 +662,7 @@ html, body {
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition: background 0.28s ease, color 0.28s ease, padding 0.28s ease;
+  transition: background 0.25s ease, color 0.25s ease, padding 0.25s ease, opacity 0.18s ease, transform 0.22s cubic-bezier(.22,1,.36,1);
 }
 .t-badge.active { background: var(--badge-active-bg); color: var(--badge-active-text); padding: 3px 11px; }
 .t-badge.idle   { background: var(--badge-idle-bg);   color: var(--badge-idle-text);   padding: 3px 8px; }
@@ -1153,6 +1153,7 @@ function renderTunnels() {
     const edgeName    = edge    ? esc(edge.name)    : '?';
     const stationName = station ? esc(station.name) : '?';
     return '<div class="tunnel-item" data-tunnel-sort-id="' + esc(t.id) + '">' +
+      '<span class="t-proto">' + esc(t.protocol) + '</span>' +
       '<div>' +
         '<div class="t-name-row">' +
           '<span class="t-name">' + esc(t.name) + '</span>' +
@@ -1160,7 +1161,6 @@ function renderTunnels() {
         '</div>' +
         '<div class="t-addr">' + esc(t.local_host) + ':' + t.local_port + ' \u2192 :' + t.remote_port + '</div>' +
       '</div>' +
-      '<span class="t-proto">' + esc(t.protocol) + '</span>' +
       '<span class="t-badge ' + badgeCls + '" data-toggle-id="' + esc(t.id) + '">' + badgeTxt + '</span>' +
       '<button class="t-del" data-tunnel-id="' + esc(t.id) + '" aria-label="Delete">' + DEL_SVG + '</button>' +
     '</div>';
@@ -1178,16 +1178,54 @@ document.addEventListener('click', function(e) {
   if (btn.dataset.stationId) deleteStation(btn.dataset.stationId);
 });
 
+function updateBadge(id) {
+  const badge = document.querySelector('.t-badge[data-toggle-id="' + id + '"]');
+  if (!badge) return;
+  const t = tunnels.find(function(x) { return x.id === id; });
+  if (!t) return;
+  const edge    = edges.find(function(e) { return e.id === t.edge_id; });
+  const station = stations.find(function(s) { return s.id === t.station_id; });
+  const edgeOnline    = edge    && edge.status    === 'online';
+  const stationOnline = station && station.status === 'online';
+  const enabled   = t.enabled !== false;
+  const badgeCls  = (!enabled || !(edgeOnline && stationOnline)) ? 'idle' : 'active';
+  const badgeTxt  = !enabled ? 'off' : (edgeOnline && stationOnline) ? 'active' : 'idle';
+  badge.className = 't-badge ' + badgeCls;
+  badge.textContent = badgeTxt;
+}
+
 async function toggleTunnel(id) {
   lastMutation = Date.now();
-  // Optimistic update: flip immediately for instant animation
   const idx = tunnels.findIndex(function(t) { return t.id === id; });
-  if (idx !== -1) { tunnels[idx] = Object.assign({}, tunnels[idx], { enabled: tunnels[idx].enabled === false }); renderTunnels(); }
+  if (idx === -1) return;
+
+  // Animate badge: shrink + fade out, swap, grow + fade in
+  const badge = document.querySelector('.t-badge[data-toggle-id="' + id + '"]');
+  if (badge) {
+    badge.style.opacity = '0';
+    badge.style.transform = 'scale(0.7)';
+  }
+
+  // Optimistic flip after short delay (mid-fade)
+  setTimeout(function() {
+    tunnels[idx] = Object.assign({}, tunnels[idx], { enabled: tunnels[idx].enabled === false });
+    updateBadge(id);
+    const b = document.querySelector('.t-badge[data-toggle-id="' + id + '"]');
+    if (b) {
+      b.style.opacity = '0';
+      b.style.transform = 'scale(0.7)';
+      requestAnimationFrame(function() { requestAnimationFrame(function() {
+        b.style.opacity = '';
+        b.style.transform = '';
+      }); });
+    }
+  }, 120);
+
   const res = await fetch('/api/tunnels/' + id + '/toggle', { method: 'POST' });
   if (res.ok) {
     const data = await res.json();
     const i = tunnels.findIndex(function(t) { return t.id === id; });
-    if (i !== -1) { tunnels[i] = data.tunnel; renderTunnels(); }
+    if (i !== -1) { tunnels[i] = data.tunnel; updateBadge(id); }
   }
 }
 
