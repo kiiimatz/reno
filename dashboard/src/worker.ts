@@ -1225,7 +1225,6 @@ function renderEdges() {
     return '<div class="node-row" data-edge-sort-id="' + esc(e.id) + '" data-ctx-type="edge" data-ctx-id="' + esc(e.id) + '">' +
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(e.name) + '</span>' +
-      '<span class="node-status ' + cls + '">' + e.status + '</span>' +
     '</div>';
   }).join('');
   makeSortable(el, 'data-edge-sort-id', edgeOrder, 'edge-order');
@@ -1241,7 +1240,6 @@ function renderStations() {
     return '<div class="node-row" data-station-sort-id="' + esc(s.id) + '" data-ctx-type="station" data-ctx-id="' + esc(s.id) + '">' +
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(s.name) + '</span>' +
-      '<span class="node-status ' + cls + '">' + s.status + '</span>' +
     '</div>';
   }).join('');
   makeSortable(el, 'data-station-sort-id', stationOrder, 'station-order');
