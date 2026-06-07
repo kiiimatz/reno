@@ -54,7 +54,7 @@ curl -sSL https://raw.githubusercontent.com/kiiimatz/reno/main/install.sh | bash
 curl -sSL https://raw.githubusercontent.com/kiiimatz/reno/main/install.sh | bash -s edge
 
 # 両方
-curl -sSL https://raw.githubusercontent.com/kiiimats/reno/main/install.sh | bash -s both
+curl -sSL https://raw.githubusercontent.com/kiiimatz/reno/main/install.sh | bash -s both
 ```
 
 > sudo が必要な場合: `... | sudo bash -s station`
