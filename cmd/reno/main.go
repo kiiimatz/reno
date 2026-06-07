@@ -621,7 +621,7 @@ func stationHeartbeatLoop(cfg Config) {
 // and syncs any changes to connected edges.
 func pollTunnelsLoop(cfg Config) {
 	for {
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		if cfg.DashboardURL == "" || cfg.APISecret == "" {
 			continue
 		}

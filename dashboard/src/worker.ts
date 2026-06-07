@@ -1218,7 +1218,6 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
   const tunnelToggleMatch = path.match(/^\/api\/tunnels\/([^/]+)\/toggle$/);
   if (tunnelToggleMatch && method === 'POST') {
-    if (!secretOk) return unauthorized();
     const [, tunnelId] = tunnelToggleMatch;
     const tunnels = await getTunnels(env);
     const tunnel = tunnels.find(t => t.id === tunnelId);
