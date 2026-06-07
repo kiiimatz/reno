@@ -829,7 +829,9 @@ function renderTunnels() {
     return;
   }
   list.innerHTML = tunnels.map(function(t) {
-    const badge = t.status === 'active'
+    const edgeOnline   = edges.some(function(e)   { return e.id === t.edge_id    && e.status === 'online'; });
+    const stationOnline = stations.some(function(s) { return s.id === t.station_id && s.status === 'online'; });
+    const badge = (edgeOnline && stationOnline)
       ? '<span class="t-badge active">active</span>'
       : '<span class="t-badge idle">idle</span>';
     return '<div class="tunnel-item">' +

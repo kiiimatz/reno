@@ -1058,12 +1058,58 @@ var (
 
 	localChannelsMu sync.RWMutex
 	localChannels   = make(map[uint32]*localChannel)
+
+	// pendingChannels buffers data for TCP channels that are still being set up.
+	// This prevents data loss when MsgChannelData arrives before handleLocalTCPChannel
+	// has finished dialing the local service and registering in localChannels.
+	pendingChannelsMu sync.RWMutex
+	pendingChannels   = make(map[uint32]*pendingCh)
 )
 
 type localChannel struct {
-	conn  net.Conn
-	mu    sync.Mutex
+	conn   net.Conn
+	mu     sync.Mutex
 	closed bool
+}
+
+// pendingCh accumulates MsgChannelData payloads arriving before the local
+// TCP connection is established.
+type pendingCh struct {
+	mu     sync.Mutex
+	buf    [][]byte
+	closed bool
+}
+
+func (p *pendingCh) add(data []byte) {
+	p.mu.Lock()
+	if !p.closed {
+		cp := make([]byte, len(data))
+		copy(cp, data)
+		p.buf = append(p.buf, cp)
+	}
+	p.mu.Unlock()
+}
+
+// closeAndFlush marks the pending buffer closed and writes any buffered data
+// to the local channel. Must be called while ch is already registered in
+// localChannels so concurrent writers use ch.mu for ordering.
+func (p *pendingCh) closeAndFlush(ch *localChannel) {
+	p.mu.Lock()
+	p.closed = true
+	buf := p.buf
+	p.buf = nil
+	p.mu.Unlock()
+
+	if len(buf) == 0 {
+		return
+	}
+	ch.mu.Lock()
+	if !ch.closed {
+		for _, data := range buf {
+			ch.conn.Write(data)
+		}
+	}
+	ch.mu.Unlock()
 }
 
 // ─── Edge daemon ──────────────────────────────────────────────────────────────
@@ -1253,7 +1299,13 @@ func edgeRun(cfg Config, stationRef string) error {
 			if open.UDP {
 				go handleLocalUDPChannel(open, writer)
 			} else {
-				go handleLocalTCPChannel(open, writer)
+				// Register pending buffer BEFORE starting the goroutine so that
+				// any MsgChannelData arriving during dial doesn't get dropped.
+				pch := &pendingCh{}
+				pendingChannelsMu.Lock()
+				pendingChannels[open.ChannelID] = pch
+				pendingChannelsMu.Unlock()
+				go handleLocalTCPChannel(open, pch, writer)
 			}
 
 		case protocol.MsgChannelData:
@@ -1266,6 +1318,14 @@ func edgeRun(cfg Config, stationRef string) error {
 					ch.conn.Write(msg.Payload)
 				}
 				ch.mu.Unlock()
+			} else {
+				// Channel is still being set up — buffer the data.
+				pendingChannelsMu.RLock()
+				pch, isPending := pendingChannels[msg.ChannelID]
+				pendingChannelsMu.RUnlock()
+				if isPending {
+					pch.add(msg.Payload)
+				}
 			}
 
 		case protocol.MsgChannelClose:
@@ -1279,9 +1339,17 @@ func edgeRun(cfg Config, stationRef string) error {
 	}
 }
 
-func handleLocalTCPChannel(open protocol.ChannelOpenMsg, writer *protocol.Writer) {
+func handleLocalTCPChannel(open protocol.ChannelOpenMsg, pch *pendingCh, writer *protocol.Writer) {
+	removePending := func() {
+		pendingChannelsMu.Lock()
+		delete(pendingChannels, open.ChannelID)
+		pendingChannelsMu.Unlock()
+	}
+
 	tunnel := findTunnel(open.TunnelID)
 	if tunnel == nil {
+		removePending()
+		pch.mu.Lock(); pch.closed = true; pch.mu.Unlock()
 		writer.WriteControl(protocol.MsgChannelClose, protocol.ChannelCloseMsg{ChannelID: open.ChannelID})
 		return
 	}
@@ -1289,13 +1357,22 @@ func handleLocalTCPChannel(open protocol.ChannelOpenMsg, writer *protocol.Writer
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
 		log.Printf("[TCP] connect %s: %v", addr, err)
+		removePending()
+		pch.mu.Lock(); pch.closed = true; pch.mu.Unlock()
 		writer.WriteControl(protocol.MsgChannelClose, protocol.ChannelCloseMsg{ChannelID: open.ChannelID})
 		return
 	}
+
+	// Register in localChannels FIRST so concurrent MsgChannelData handlers
+	// write directly here instead of buffering.
 	ch := &localChannel{conn: conn}
 	localChannelsMu.Lock()
 	localChannels[open.ChannelID] = ch
 	localChannelsMu.Unlock()
+
+	// Remove from pending and flush any buffered data into the local conn.
+	removePending()
+	pch.closeAndFlush(ch)
 
 	defer func() {
 		closeLocalChannel(open.ChannelID)
