@@ -441,6 +441,47 @@ html, body {
   margin-bottom: 10px;
 }
 
+/* ── Context menu ── */
+.ctx-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  opacity: 0;
+  transform: scale(0.95);
+  transform-origin: top left;
+  transition: opacity 0.1s ease, transform 0.1s ease;
+  pointer-events: none;
+}
+.ctx-menu.open {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: all;
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 5px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.ctx-item:hover { background: rgba(255,255,255,0.07); color: var(--text-primary); }
+.ctx-item.danger:hover { background: var(--danger-bg); color: var(--danger-text); }
+.ctx-item svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; flex-shrink: 0; }
+
 /* ── Node rows ── */
 .node-row {
   display: flex; align-items: center; gap: 8px;
@@ -923,6 +964,13 @@ html, body {
   </div>
 </div>
 
+<div id="ctx-menu" class="ctx-menu">
+  <button class="ctx-item danger" id="ctx-delete" onclick="ctxDelete()">
+    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    Delete
+  </button>
+</div>
+
 <script>
 let edges = [];
 let stations = [];
@@ -936,6 +984,38 @@ function toggleNodes() {
   document.getElementById('nodes-body').classList.toggle('open', nodesOpen);
   document.getElementById('nodes-arrow').classList.toggle('open', nodesOpen);
 }
+
+/* ── Context menu ── */
+let ctxTarget = null; // { type: 'edge'|'station', id: string }
+
+function openCtxMenu(e, type, id) {
+  e.preventDefault();
+  ctxTarget = { type, id };
+  const menu = document.getElementById('ctx-menu');
+  menu.classList.add('open');
+  // Position near cursor, keep within viewport
+  const mw = 160, mh = 48;
+  const x = Math.min(e.clientX, window.innerWidth  - mw - 8);
+  const y = Math.min(e.clientY, window.innerHeight - mh - 8);
+  menu.style.left = x + 'px';
+  menu.style.top  = y + 'px';
+}
+
+function closeCtxMenu() {
+  document.getElementById('ctx-menu').classList.remove('open');
+  ctxTarget = null;
+}
+
+function ctxDelete() {
+  if (!ctxTarget) return;
+  if (ctxTarget.type === 'edge')    deleteEdge(ctxTarget.id);
+  if (ctxTarget.type === 'station') deleteStation(ctxTarget.id);
+  closeCtxMenu();
+}
+
+document.addEventListener('click',       function(e) { if (!e.target.closest('#ctx-menu')) closeCtxMenu(); });
+document.addEventListener('contextmenu', function(e) { if (!e.target.closest('.node-row'))  closeCtxMenu(); });
+document.addEventListener('keydown',     function(e) { if (e.key === 'Escape') closeCtxMenu(); });
 
 function openCreate() {
   document.getElementById('create-overlay').classList.add('open');
@@ -1135,7 +1215,7 @@ function renderEdges() {
   if (!sorted.length) { el.innerHTML = '<div class="empty-sm">No edges</div>'; return; }
   el.innerHTML = sorted.map(function(e) {
     const cls = e.status === 'online' ? 'online' : 'offline';
-    return '<div class="node-row" data-edge-sort-id="' + esc(e.id) + '">' +
+    return '<div class="node-row" data-edge-sort-id="' + esc(e.id) + '" oncontextmenu="openCtxMenu(event,\'edge\',\'' + esc(e.id) + '\')">' +
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(e.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + e.status + '</span>' +
@@ -1151,7 +1231,7 @@ function renderStations() {
   if (!sorted.length) { el.innerHTML = '<div class="empty-sm">No stations</div>'; return; }
   el.innerHTML = sorted.map(function(s) {
     const cls = s.status === 'online' ? 'online' : 'offline';
-    return '<div class="node-row" data-station-sort-id="' + esc(s.id) + '">' +
+    return '<div class="node-row" data-station-sort-id="' + esc(s.id) + '" oncontextmenu="openCtxMenu(event,\'station\',\'' + esc(s.id) + '\')">' +
       '<span class="node-dot ' + cls + '"></span>' +
       '<span class="node-name">' + esc(s.name) + '</span>' +
       '<span class="node-status ' + cls + '">' + s.status + '</span>' +
