@@ -631,6 +631,94 @@ html, body {
   padding-right: 28px;
 }
 
+/* ── Custom Select Dropdown ── */
+.custom-select { position: relative; width: 100%; }
+
+.cs-trigger {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  text-align: left;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.cs-trigger:focus,
+.cs-trigger.open { border-color: var(--border-hover); }
+
+.cs-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.cs-value.placeholder { color: var(--text-label); }
+
+.cs-arrow {
+  width: 12px; height: 12px;
+  stroke: var(--text-label); fill: none;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.cs-trigger.open .cs-arrow { transform: rotate(180deg); }
+
+.cs-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0; right: 0;
+  z-index: 200;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.cs-menu.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: all;
+}
+.cs-menu::-webkit-scrollbar { width: 3px; }
+.cs-menu::-webkit-scrollbar-track { background: transparent; }
+.cs-menu::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+
+.cs-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  transition: background 0.1s;
+  user-select: none;
+}
+.cs-option:hover { background: rgba(255,255,255,0.07); }
+.cs-option.selected { background: rgba(78,207,113,0.08); color: var(--badge-active-text); }
+
+.cs-opt-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cs-opt-offline { font-size: 11px; color: var(--text-label); flex-shrink: 0; }
+
 .create-footer { display: flex; justify-content: flex-end; }
 
 .btn-create {
@@ -915,17 +1003,33 @@ html, body {
         <div class="create-fields">
           <div class="field">
             <label>Edge</label>
-            <select id="form-edge"><option value="">Select...</option></select>
+            <div class="custom-select">
+              <button class="cs-trigger" id="dd-edge-trigger" onclick="toggleDropdown('edge', event)">
+                <span class="cs-value placeholder" id="dd-edge-val">Select...</span>
+                <svg class="cs-arrow" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="cs-menu" id="dd-edge-menu"></div>
+            </div>
           </div>
           <div class="field">
             <label>Station</label>
-            <select id="form-station"><option value="">Select...</option></select>
+            <div class="custom-select">
+              <button class="cs-trigger" id="dd-station-trigger" onclick="toggleDropdown('station', event)">
+                <span class="cs-value placeholder" id="dd-station-val">Select...</span>
+                <svg class="cs-arrow" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="cs-menu" id="dd-station-menu"></div>
+            </div>
           </div>
           <div class="field">
             <label>Protocol</label>
-            <select id="form-protocol">
-              <option>TCP</option><option>UDP</option><option>QUIC</option><option>HTTP</option><option>HTTPS</option>
-            </select>
+            <div class="custom-select">
+              <button class="cs-trigger" id="dd-protocol-trigger" onclick="toggleDropdown('protocol', event)">
+                <span class="cs-value" id="dd-protocol-val">TCP</span>
+                <svg class="cs-arrow" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="cs-menu" id="dd-protocol-menu"></div>
+            </div>
           </div>
           <div class="field">
             <label>IP</label>
@@ -970,6 +1074,12 @@ let ws = null;
 let lastMutation = 0;
 let nodesOpen = false;
 
+// Custom dropdown state
+let selectedEdge    = { id: '', name: 'Select...' };
+let selectedStation = { id: '', name: 'Select...' };
+let selectedProtocol = 'TCP';
+let openDropdown = null;
+
 function toggleNodes() {
   nodesOpen = !nodesOpen;
   document.getElementById('nodes-body').classList.toggle('open', nodesOpen);
@@ -1012,11 +1122,70 @@ document.addEventListener('contextmenu', function(e) {
     closeCtxMenu();
   }
 });
-document.addEventListener('click',   function(e) { if (!e.target.closest('#ctx-menu')) closeCtxMenu(); });
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeCtxMenu(); });
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#ctx-menu')) closeCtxMenu();
+  if (!e.target.closest('.custom-select')) closeDropdown();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { closeCtxMenu(); closeDropdown(); }
+});
+
+/* ── Custom dropdowns ── */
+function toggleDropdown(name, e) {
+  if (e) e.stopPropagation();
+  if (openDropdown === name) { closeDropdown(); return; }
+  closeDropdown();
+  openDropdown = name;
+  const trigger = document.getElementById('dd-' + name + '-trigger');
+  const menu    = document.getElementById('dd-' + name + '-menu');
+  if (trigger) trigger.classList.add('open');
+  if (menu)    menu.classList.add('open');
+}
+
+function closeDropdown() {
+  if (!openDropdown) return;
+  const name = openDropdown;
+  openDropdown = null;
+  const trigger = document.getElementById('dd-' + name + '-trigger');
+  const menu    = document.getElementById('dd-' + name + '-menu');
+  if (trigger) trigger.classList.remove('open');
+  if (menu)    menu.classList.remove('open');
+}
+
+function selectOption(name, id, label) {
+  if (name === 'edge')     selectedEdge    = { id: id, name: label };
+  if (name === 'station')  selectedStation = { id: id, name: label };
+  if (name === 'protocol') selectedProtocol = id;
+  const valEl = document.getElementById('dd-' + name + '-val');
+  if (valEl) {
+    valEl.textContent = label;
+    valEl.classList.toggle('placeholder', !id);
+  }
+  const menu = document.getElementById('dd-' + name + '-menu');
+  if (menu) {
+    Array.from(menu.querySelectorAll('.cs-option')).forEach(function(el) {
+      el.classList.toggle('selected', el.dataset.val === id);
+    });
+  }
+  closeDropdown();
+}
+
+function renderProtocolSelect() {
+  const menu = document.getElementById('dd-protocol-menu');
+  if (!menu || menu.children.length > 0) return;
+  ['TCP','UDP','QUIC','HTTP','HTTPS'].forEach(function(proto) {
+    const opt = document.createElement('div');
+    opt.className = 'cs-option' + (proto === selectedProtocol ? ' selected' : '');
+    opt.dataset.val = proto;
+    opt.textContent = proto;
+    opt.addEventListener('click', function() { selectOption('protocol', proto, proto); });
+    menu.appendChild(opt);
+  });
+}
 
 function openCreate() {
   document.getElementById('create-overlay').classList.add('open');
+  renderProtocolSelect();
 }
 function closeCreate() {
   document.getElementById('create-overlay').classList.remove('open');
@@ -1237,29 +1406,73 @@ function renderStations() {
 }
 
 function renderEdgeSelect() {
-  const sel = document.getElementById('form-edge');
-  const val = sel.value;
-  sel.innerHTML = '<option value="">Select...</option>';
-  for (const e of edges) {
-    const opt = document.createElement('option');
-    opt.value = e.id;
-    opt.textContent = e.name + (e.status === 'offline' ? ' (offline)' : '');
-    if (e.id === val) opt.selected = true;
-    sel.appendChild(opt);
-  }
+  const menu = document.getElementById('dd-edge-menu');
+  if (!menu) return;
+  const currentVal = selectedEdge.id;
+  menu.innerHTML = '';
+  const noneOpt = document.createElement('div');
+  noneOpt.className = 'cs-option' + (!currentVal ? ' selected' : '');
+  noneOpt.dataset.val = '';
+  noneOpt.textContent = 'Select...';
+  noneOpt.addEventListener('click', function() { selectOption('edge', '', 'Select...'); });
+  menu.appendChild(noneOpt);
+  edges.forEach(function(e) {
+    const opt = document.createElement('div');
+    opt.className = 'cs-option' + (e.id === currentVal ? ' selected' : '');
+    opt.dataset.val = e.id;
+    const dot = document.createElement('span');
+    dot.className = 'node-dot ' + (e.status === 'online' ? 'online' : 'offline');
+    const nameEl = document.createElement('span');
+    nameEl.className = 'cs-opt-name';
+    nameEl.textContent = e.name;
+    opt.appendChild(dot);
+    opt.appendChild(nameEl);
+    if (e.status === 'offline') {
+      const badge = document.createElement('span');
+      badge.className = 'cs-opt-offline';
+      badge.textContent = 'offline';
+      opt.appendChild(badge);
+    }
+    opt.addEventListener('click', (function(eid, ename) {
+      return function() { selectOption('edge', eid, ename); };
+    })(e.id, e.name));
+    menu.appendChild(opt);
+  });
 }
 
 function renderStationSelect() {
-  const sel = document.getElementById('form-station');
-  const val = sel.value;
-  sel.innerHTML = '<option value="">Select...</option>';
-  for (const s of stations) {
-    const opt = document.createElement('option');
-    opt.value = s.id;
-    opt.textContent = s.name + (s.status === 'offline' ? ' (offline)' : '');
-    if (s.id === val) opt.selected = true;
-    sel.appendChild(opt);
-  }
+  const menu = document.getElementById('dd-station-menu');
+  if (!menu) return;
+  const currentVal = selectedStation.id;
+  menu.innerHTML = '';
+  const noneOpt = document.createElement('div');
+  noneOpt.className = 'cs-option' + (!currentVal ? ' selected' : '');
+  noneOpt.dataset.val = '';
+  noneOpt.textContent = 'Select...';
+  noneOpt.addEventListener('click', function() { selectOption('station', '', 'Select...'); });
+  menu.appendChild(noneOpt);
+  stations.forEach(function(s) {
+    const opt = document.createElement('div');
+    opt.className = 'cs-option' + (s.id === currentVal ? ' selected' : '');
+    opt.dataset.val = s.id;
+    const dot = document.createElement('span');
+    dot.className = 'node-dot ' + (s.status === 'online' ? 'online' : 'offline');
+    const nameEl = document.createElement('span');
+    nameEl.className = 'cs-opt-name';
+    nameEl.textContent = s.name;
+    opt.appendChild(dot);
+    opt.appendChild(nameEl);
+    if (s.status === 'offline') {
+      const badge = document.createElement('span');
+      badge.className = 'cs-opt-offline';
+      badge.textContent = 'offline';
+      opt.appendChild(badge);
+    }
+    opt.addEventListener('click', (function(sid, sname) {
+      return function() { selectOption('station', sid, sname); };
+    })(s.id, s.name));
+    menu.appendChild(opt);
+  });
 }
 
 function renderTunnels() {
@@ -1371,9 +1584,9 @@ async function toggleTunnel(id) {
 }
 
 async function createTunnel() {
-  const edgeId     = document.getElementById('form-edge').value;
-  const stationId  = document.getElementById('form-station').value;
-  const protocol   = document.getElementById('form-protocol').value;
+  const edgeId     = selectedEdge.id;
+  const stationId  = selectedStation.id;
+  const protocol   = selectedProtocol;
   const localHost  = document.getElementById('form-ip').value;
   const localPort  = parseInt(document.getElementById('form-port').value);
   const name       = document.getElementById('form-name').value;
@@ -1391,6 +1604,16 @@ async function createTunnel() {
     document.getElementById('form-port').value = '';
     document.getElementById('form-name').value = '';
     document.getElementById('form-remote-port').value = '';
+    // Reset dropdown selections
+    selectedEdge    = { id: '', name: 'Select...' };
+    selectedStation = { id: '', name: 'Select...' };
+    selectedProtocol = 'TCP';
+    const edgeVal = document.getElementById('dd-edge-val');
+    const stationVal = document.getElementById('dd-station-val');
+    const protoVal = document.getElementById('dd-protocol-val');
+    if (edgeVal)    { edgeVal.textContent    = 'Select...'; edgeVal.classList.add('placeholder'); }
+    if (stationVal) { stationVal.textContent = 'Select...'; stationVal.classList.add('placeholder'); }
+    if (protoVal)   { protoVal.textContent   = 'TCP'; }
     renderTunnels();
     closeCreate();
   }
