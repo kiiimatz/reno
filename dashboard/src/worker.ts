@@ -570,12 +570,15 @@ html, body {
   gap: 10px;
   margin-bottom: 10px;
 }
-.create-fields .field:nth-child(1) { flex: 2; } /* Edge */
-.create-fields .field:nth-child(2) { flex: 2; } /* Station */
-.create-fields .field:nth-child(3) { flex: 1; } /* Protocol */
-.create-fields .field:nth-child(4) { flex: 2; } /* IP */
+.create-fields .field { flex: 1; }
 
 .create-fields-2 {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.create-fields-3 {
   display: flex;
   gap: 10px;
   margin-bottom: 12px;
@@ -1021,6 +1024,8 @@ html, body {
               <div class="cs-menu" id="dd-station-menu"></div>
             </div>
           </div>
+        </div>
+        <div class="create-fields-2">
           <div class="field">
             <label>Protocol</label>
             <div class="custom-select">
@@ -1031,12 +1036,12 @@ html, body {
               <div class="cs-menu" id="dd-protocol-menu"></div>
             </div>
           </div>
-          <div class="field">
+          <div class="field" style="flex:2">
             <label>IP</label>
             <input id="form-ip" type="text" placeholder="127.0.0.1" value="127.0.0.1" />
           </div>
         </div>
-        <div class="create-fields-2">
+        <div class="create-fields-3">
           <div class="field-sm">
             <label>Port</label>
             <input id="form-port" type="number" placeholder="8080" />
