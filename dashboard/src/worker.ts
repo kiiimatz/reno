@@ -189,91 +189,97 @@ function generateId(): string {
 // --- Dashboard HTML ---
 
 const DASHBOARD_HTML = `<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>reno</title>
+<script>try{if(localStorage.getItem('reno-theme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}<\/script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg-page:    #f5f4f0;
-  --bg-primary: #ffffff;
-  --bg-input:   #f0efeb;
-  --border:        rgba(0,0,0,0.09);
-  --border-input:  rgba(0,0,0,0.12);
-  --border-hover:  rgba(0,0,0,0.25);
-  --text-primary:  rgba(26,25,23,1);
-  --text-secondary:rgba(90,88,84,1);
-  --text-label:    rgba(130,128,124,1);
-  --text-on-accent:rgba(255,255,255,1);
-  --accent:        rgba(26,25,23,1);
-  --accent-hover:  rgba(46,45,42,1);
-  --accent-text:   rgba(255,255,255,1);
-  --badge-active-bg:  #d4edda;
-  --badge-active-text:#276235;
-  --badge-idle-bg:    #ebebeb;
-  --badge-idle-text:  #8a8880;
-  --proto-bg:   #ebebeb;
-  --proto-text: #6b6a67;
-  --del-bg:     #ebebeb;
-  --del-border: rgba(0,0,0,0.1);
-  --del-text:   #9e9c98;
-  --danger-text:#c0392b;
-  --danger-bg:  #fdf0ef;
-  --scrollbar:  rgba(0,0,0,0.1);
-  --shadow:     none;
-  --radius-sm:  6px;
-  --radius-md:  8px;
-  --radius-lg:  10px;
-  --font:       'DM Mono', monospace;
-  --font-sans:  'DM Sans', sans-serif;
-}
-
-[data-theme="dark"] {
-  --bg-page:    rgba(30,29,27,1);
-  --bg-primary: rgba(48,46,43,1);
-  --bg-input:   rgba(55,53,50,1);
+  --bg-page:       #1e1d1b;
+  --bg-primary:    #2a2825;
+  --bg-input:      #302e2b;
   --border:        rgba(255,255,255,0.08);
-  --border-input:  rgba(255,255,255,0.10);
-  --border-hover:  rgba(255,255,255,0.25);
-  --text-primary:  rgba(240,237,232,1);
-  --text-secondary:rgba(120,118,114,1);
-  --text-label:    rgba(100,98,94,1);
-  --text-on-accent:rgba(30,29,27,1);
-  --accent:        rgba(240,237,232,1);
-  --accent-hover:  rgba(255,255,255,1);
-  --accent-text:   rgba(30,29,27,1);
+  --border-input:  rgba(255,255,255,0.12);
+  --border-hover:  rgba(255,255,255,0.28);
+  --text-primary:  #f0ede8;
+  --text-secondary:#9e9c98;
+  --text-label:    #6b6a67;
+  --text-on-accent:#1a1917;
+  --accent:        #e8e5e0;
+  --accent-hover:  #f5f2ed;
+  --accent-text:   #1a1917;
   --badge-active-bg:  rgba(78,207,113,0.15);
   --badge-active-text:rgba(78,207,113,1);
   --badge-idle-bg:    rgba(60,58,55,1);
   --badge-idle-text:  rgba(130,128,124,1);
-  --proto-bg:   rgba(60,58,55,1);
-  --proto-text: rgba(160,158,154,1);
-  --del-bg:     rgba(60,58,55,1);
-  --del-border: rgba(255,255,255,0.10);
-  --del-text:   rgba(160,158,154,1);
-  --danger-text:#e07060;
-  --danger-bg:  #3a2420;
-  --scrollbar:  rgba(255,255,255,0.1);
-  --shadow:     none;
-  --radius-lg:  10px;
+  --proto-bg:      rgba(60,58,55,1);
+  --proto-text:    rgba(160,158,154,1);
+  --del-bg:        rgba(60,58,55,1);
+  --del-border:    rgba(255,255,255,0.10);
+  --del-text:      rgba(160,158,154,1);
+  --danger-text:   #e57373;
+  --danger-bg:     rgba(244,67,54,0.1);
+  --scrollbar:     rgba(255,255,255,0.14);
+  --shadow:        none;
+  --radius-sm:     6px;
+  --radius-md:     8px;
+  --radius-lg:     12px;
+  --font:          'DM Mono', monospace;
+  --font-sans:     'DM Sans', sans-serif;
+}
+
+[data-theme="light"] {
+  --bg-page:       #f4f2ef;
+  --bg-primary:    #ffffff;
+  --bg-input:      #edecea;
+  --border:        rgba(0,0,0,0.08);
+  --border-input:  rgba(0,0,0,0.13);
+  --border-hover:  rgba(0,0,0,0.28);
+  --text-primary:  #1a1917;
+  --text-secondary:#57554f;
+  --text-label:    #999590;
+  --text-on-accent:#f4f2ef;
+  --accent:        #1a1917;
+  --accent-hover:  #2a2825;
+  --accent-text:   #f4f2ef;
+  --badge-active-bg:  #d4edda;
+  --badge-active-text:#276235;
+  --badge-idle-bg:    #ebebeb;
+  --badge-idle-text:  #8a8880;
+  --proto-bg:      #ebebeb;
+  --proto-text:    #6b6a67;
+  --del-bg:        #ebebeb;
+  --del-border:    rgba(0,0,0,0.1);
+  --del-text:      #9e9c98;
+  --danger-text:   #b71c1c;
+  --danger-bg:     rgba(244,67,54,0.1);
+  --scrollbar:     rgba(0,0,0,0.14);
+  --shadow:        none;
+  --radius-lg:     12px;
 }
 
 html {
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar) transparent;
+  transition: background 0.2s ease, color 0.2s ease;
 }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
 html, body {
   height: 100%;
   font-family: var(--font-sans);
   background: var(--bg-page);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
-  transition: background 0.15s, color 0.15s;
 }
 
 .page {
@@ -319,38 +325,36 @@ html, body {
 
 .logo-text {
   font-family: var(--font-sans);
-  font-size: 22px;
-  font-weight: 400;
+  font-size: 20px;
+  font-weight: 500;
   color: var(--text-primary);
   letter-spacing: -0.3px;
 }
 
 .theme-toggle {
-  display: flex; align-items: center; gap: 6px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 5px 13px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 0.5px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 7px;
   cursor: pointer;
-  font-family: var(--font-sans);
-  font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-label);
   transition: background 0.15s, color 0.15s;
 }
 
-.theme-toggle:hover { color: var(--text-primary); }
+.theme-toggle:hover { background: var(--bg-input); color: var(--text-primary); }
 
 .theme-toggle svg {
-  width: 13px; height: 13px;
+  width: 14px; height: 14px;
   stroke: currentColor; fill: none;
-  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
   flex-shrink: 0;
 }
 
 /* ── Card ── */
 .card {
   background: var(--bg-primary);
-  border: 1px solid var(--border);
+  border: 0.5px solid var(--border);
   border-radius: var(--radius-lg);
   transition: background 0.15s;
 }
@@ -406,13 +410,13 @@ html, body {
 .nodes-header:hover { background: rgba(255,255,255,0.03); }
 
 .nodes-arrow {
-  width: 16px; height: 16px;
+  width: 13px; height: 13px;
   stroke: var(--text-label); fill: none;
   stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-  transition: transform 0.28s ease;
+  transition: transform 0.25s cubic-bezier(.4,0,.2,1);
   flex-shrink: 0;
 }
-.nodes-arrow.open { transform: rotate(180deg); }
+.nodes-arrow.open { transform: rotate(90deg); }
 
 .nodes-body {
   max-height: 0;
@@ -918,12 +922,6 @@ html, body {
 <div id="login-view" class="login-page" style="display:none">
   <div class="login-box">
     <div class="login-logo">
-      <div class="logo-icon">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
-          <line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="5" y1="19" x2="19" y2="19"/>
-        </svg>
-      </div>
       <span class="logo-text">reno</span>
     </div>
     <div class="login-field">
@@ -944,19 +942,12 @@ html, body {
 
     <header class="header">
       <div class="logo">
-        <div class="logo-icon">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
-            <line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="5" y1="19" x2="19" y2="19"/>
-          </svg>
-        </div>
         <span class="logo-text">reno</span>
       </div>
       <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
         <svg id="themeIcon" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
         </svg>
-        <span id="themeLabel">dark</span>
       </button>
     </header>
 
@@ -966,7 +957,7 @@ html, body {
       <div class="nodes-header" onclick="toggleNodes()">
         <span class="section-label">Edges &amp; Stations</span>
         <svg class="nodes-arrow" id="nodes-arrow" viewBox="0 0 24 24" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"/>
+          <polyline points="9 18 15 12 9 6"/>
         </svg>
       </div>
       <div class="nodes-body" id="nodes-body">
@@ -1215,6 +1206,15 @@ function showLogin() {
 function showApp() {
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'flex';
+  // Sync theme icon with current state
+  const icon = document.getElementById('themeIcon');
+  if (icon) {
+    if (dark) {
+      icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+    } else {
+      icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+    }
+  }
 }
 
 /* ── Item drag-to-reorder (Trello style) ── */
@@ -1645,20 +1645,18 @@ function deleteStation(id) {
   fetch('/api/stations/' + id, { method: 'DELETE' });
 }
 
-let dark = true;
+let dark = document.documentElement.getAttribute('data-theme') !== 'light';
 
 function toggleTheme() {
   dark = !dark;
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   const icon = document.getElementById('themeIcon');
-  const label = document.getElementById('themeLabel');
   if (dark) {
     icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-    label.textContent = 'dark';
   } else {
     icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-    label.textContent = 'light';
   }
+  try { localStorage.setItem('reno-theme', dark ? 'dark' : 'light'); } catch(e) {}
 }
 
 function esc(str) {
