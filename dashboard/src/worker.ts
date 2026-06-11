@@ -193,7 +193,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>reno</title>
+<title>Reno</title>
 <script>try{if(localStorage.getItem('reno-theme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}<\/script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -922,7 +922,7 @@ html, body {
 <div id="login-view" class="login-page" style="display:none">
   <div class="login-box">
     <div class="login-logo">
-      <span class="logo-text">reno</span>
+      <span class="logo-text">Reno</span>
     </div>
     <div class="login-field">
       <label>Username</label>
@@ -942,7 +942,7 @@ html, body {
 
     <header class="header">
       <div class="logo">
-        <span class="logo-text">reno</span>
+        <span class="logo-text">Reno</span>
       </div>
       <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
         <svg id="themeIcon" viewBox="0 0 24 24" aria-hidden="true">
