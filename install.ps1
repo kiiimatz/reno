@@ -1,29 +1,17 @@
-# Reno installer for Windows (PowerShell)
-# Run as Administrator:
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/kiiimatz/reno/main/install.ps1)))
-#
-# Optionally start services after install:
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/kiiimatz/reno/main/install.ps1))) station
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/kiiimatz/reno/main/install.ps1))) edge
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/kiiimatz/reno/main/install.ps1))) both
-
-param(
-    [string]$Mode = ""
-)
+# Reno installer for Windows (no admin required)
+# Run:
+#   irm https://raw.githubusercontent.com/kiiimatz/reno/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
 $Repo = "kiiimatz/reno"
 $BaseUrl = "https://github.com/$Repo/releases/latest/download"
-$InstallDir = "$env:ProgramFiles\reno"
+$InstallDir = "$env:LOCALAPPDATA\reno"
 
-# detect arch
 $Arch = "amd64"
-$CpuArch = (Get-CimInstance Win32_Processor).Architecture
-if ($CpuArch -eq 12) { $Arch = "arm64" }
+if ((Get-CimInstance Win32_Processor).Architecture -eq 12) { $Arch = "arm64" }
 
-$BinaryName = "reno-windows-${Arch}.exe"
-$Url = "$BaseUrl/$BinaryName"
+$Url = "$BaseUrl/reno-windows-${Arch}.exe"
 $Dest = "$InstallDir\reno.exe"
 
 Write-Host "Downloading reno (windows/$Arch)..."
@@ -38,31 +26,16 @@ try {
 
 Write-Host "Installed: $Dest"
 
-# Add to PATH if not already there
-$CurrentPath = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
-if ($CurrentPath -notlike "*$InstallDir*") {
-    [System.Environment]::SetEnvironmentVariable("PATH", "$CurrentPath;$InstallDir", "Machine")
+# Add to user PATH
+$UserPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
+if ($UserPath -notlike "*$InstallDir*") {
+    [System.Environment]::SetEnvironmentVariable("PATH", "$UserPath;$InstallDir", "User")
     $env:PATH = "$env:PATH;$InstallDir"
-    Write-Host "Added $InstallDir to system PATH"
+    Write-Host "Added $InstallDir to PATH"
 }
 
-# Start services if requested
-if ($Mode -eq "station" -or $Mode -eq "both") {
-    Write-Host "Starting Station..."
-    & "$Dest" station
-}
-if ($Mode -eq "edge" -or $Mode -eq "both") {
-    Write-Host "Starting Edge..."
-    & "$Dest" edge
-}
+Write-Host "Starting reno..."
+& "$Dest" station
+& "$Dest" edge
 
-if ($Mode -eq "") {
-    Write-Host ""
-    Write-Host "Usage:"
-    Write-Host "  reno config    # set up config (%APPDATA%\reno\config.json)"
-    Write-Host "  reno station   # start Station server (background, auto-start on boot)"
-    Write-Host "  reno edge      # start Edge client (background, auto-start on boot)"
-    Write-Host "  reno down      # stop Station and Edge"
-    Write-Host "  reno remove    # uninstall reno (stops services, removes binary)"
-    Write-Host "  reno version   # show version"
-}
+Write-Host "Done. Run 'reno version' to verify."
