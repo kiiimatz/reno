@@ -995,6 +995,26 @@ func pickEdge() *edgeConn {
 	return nil
 }
 
+// pickEdgeForTunnel returns the edge whose dashboardEdgeID matches the tunnel's
+// EdgeID. Falls back to any connected edge when no match is found (e.g. when
+// the edge registered without a dashboard ID).
+func pickEdgeForTunnel(t protocol.TunnelConfig) *edgeConn {
+	edgesMu.RLock()
+	defer edgesMu.RUnlock()
+	if t.EdgeID != "" {
+		for _, e := range edges {
+			if e.dashboardEdgeID == t.EdgeID {
+				return e
+			}
+		}
+	}
+	// Fallback: return any edge (covers single-edge setups or missing EdgeID).
+	for _, e := range edges {
+		return e
+	}
+	return nil
+}
+
 func closeTCPChannel(channelID uint32) {
 	tcpChannelsMu.Lock()
 	ch, ok := tcpChannels[channelID]
@@ -1032,7 +1052,7 @@ func startTCPTunnelListener(t protocol.TunnelConfig) {
 }
 
 func handleTCPTunnelConn(clientConn net.Conn, t protocol.TunnelConfig) {
-	edge := pickEdge()
+	edge := pickEdgeForTunnel(t)
 	if edge == nil {
 		clientConn.Close()
 		return
@@ -1100,13 +1120,13 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 		sessionsMu.Lock()
 		sess, exists := sessions[srcKey]
 		if !exists {
-			edge := pickEdge()
+			edge := pickEdgeForTunnel(t)
 			if edge == nil {
 				sessionsMu.Unlock()
 				continue
 			}
 			channelID := atomic.AddUint32(&channelCounter, 1)
-			sess = &udpSession{channelID: channelID, lastSeen: time.Now()}
+			sess = &udpSession{channelID: channelID, lastSeen: time.Now(), edge: edge}
 			sessions[srcKey] = sess
 			udpReturnMu.Lock()
 			udpReturns[channelID] = &udpReturn{pc: pc, srcAddr: src, lastSeen: time.Now(), tunnelID: t.ID}
@@ -1119,10 +1139,11 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 		}
 		sess.lastSeen = time.Now()
 		channelID := sess.channelID
+		sessEdge := sess.edge
 		sessionsMu.Unlock()
 
-		if edge := pickEdge(); edge != nil {
-			edge.writer.WriteData(channelID, pkt)
+		if sessEdge != nil {
+			sessEdge.writer.WriteData(channelID, pkt)
 		}
 	}
 }
@@ -1130,6 +1151,7 @@ func startUDPTunnelListener(t protocol.TunnelConfig) {
 type udpSession struct {
 	channelID uint32
 	lastSeen  time.Time
+	edge      *edgeConn
 }
 
 func cleanupUDPSessions() {
