@@ -15,8 +15,8 @@ $Url = "$BaseUrl/reno-windows-${Arch}.exe"
 $Dest = "$InstallDir\reno.exe"
 
 # Stop existing scheduled tasks so the binary is not locked
-schtasks /End /TN "RenoStation" 2>$null
-schtasks /End /TN "RenoEdge"    2>$null
+schtasks /End /TN "RenoStation" 2>$null; $LASTEXITCODE = 0
+schtasks /End /TN "RenoEdge"    2>$null; $LASTEXITCODE = 0
 Start-Sleep -Seconds 1
 
 Write-Host "Downloading reno (windows/$Arch)..."
