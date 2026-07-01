@@ -225,8 +225,8 @@ func runUpdate() {
 	// Restart running services
 	switch runtime.GOOS {
 	case "linux":
-		run("systemctl", "restart", "reno-station")
-		run("systemctl", "restart", "reno-edge")
+		run("systemctl", "--user", "restart", "reno-station")
+		run("systemctl", "--user", "restart", "reno-edge")
 	case "darwin":
 		stationPlist := "/Library/LaunchDaemons/com.kiiimatz.reno-station.plist"
 		edgePlist := "/Library/LaunchDaemons/com.kiiimatz.reno-edge.plist"
@@ -278,8 +278,8 @@ func installAndStart(component string) {
 func runDown() {
 	switch runtime.GOOS {
 	case "linux":
-		run("systemctl", "stop", "reno-station")
-		run("systemctl", "stop", "reno-edge")
+		run("systemctl", "--user", "stop", "reno-station")
+		run("systemctl", "--user", "stop", "reno-edge")
 	case "darwin":
 		run("launchctl", "unload", "/Library/LaunchDaemons/com.kiiimatz.reno-station.plist")
 		run("launchctl", "unload", "/Library/LaunchDaemons/com.kiiimatz.reno-edge.plist")
@@ -296,13 +296,13 @@ func runRemove() {
 
 	switch runtime.GOOS {
 	case "linux":
-		run("systemctl", "stop", "reno-station")
-		run("systemctl", "stop", "reno-edge")
-		run("systemctl", "disable", "reno-station")
-		run("systemctl", "disable", "reno-edge")
-		os.Remove("/etc/systemd/system/reno-station.service")
-		os.Remove("/etc/systemd/system/reno-edge.service")
-		run("systemctl", "daemon-reload")
+		run("systemctl", "--user", "stop", "reno-station")
+		run("systemctl", "--user", "stop", "reno-edge")
+		run("systemctl", "--user", "disable", "reno-station")
+		run("systemctl", "--user", "disable", "reno-edge")
+		os.Remove(filepath.Join(systemdUserDir(), "reno-station.service"))
+		os.Remove(filepath.Join(systemdUserDir(), "reno-edge.service"))
+		run("systemctl", "--user", "daemon-reload")
 	case "darwin":
 		stationPlist := "/Library/LaunchDaemons/com.kiiimatz.reno-station.plist"
 		edgePlist := "/Library/LaunchDaemons/com.kiiimatz.reno-edge.plist"
@@ -338,14 +338,18 @@ func runRemove() {
 	fmt.Println("Reno removed.")
 }
 
-// ── Linux systemd ─────────────────────────────────────────────────────────────
+// ── Linux systemd (user-level, no sudo required) ──────────────────────────────
+
+func systemdUserDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "systemd", "user")
+}
 
 func installSystemd(component, exePath, cfgPath string) {
 	svcName := "reno-" + component
 	unit := fmt.Sprintf(`[Unit]
 Description=Reno %s
-After=network-online.target
-Wants=network-online.target
+After=network.target
 
 [Service]
 ExecStart=%s %s-daemon %s
@@ -353,16 +357,22 @@ Restart=always
 RestartSec=5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 `, strings.Title(component), exePath, component, cfgPath)
 
-	path := "/etc/systemd/system/" + svcName + ".service"
-	if err := os.WriteFile(path, []byte(unit), 0644); err != nil {
-		log.Fatalf("write service file: %v\nTry running with sudo.", err)
+	dir := systemdUserDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Fatalf("create systemd user dir: %v", err)
 	}
-	run("systemctl", "daemon-reload")
-	run("systemctl", "enable", svcName)
-	run("systemctl", "restart", svcName)
+	path := filepath.Join(dir, svcName+".service")
+	if err := os.WriteFile(path, []byte(unit), 0644); err != nil {
+		log.Fatalf("write service file: %v", err)
+	}
+	// Allow user services to run at boot without an active login session.
+	run("loginctl", "enable-linger")
+	run("systemctl", "--user", "daemon-reload")
+	run("systemctl", "--user", "enable", svcName)
+	run("systemctl", "--user", "restart", svcName)
 }
 
 // ── macOS launchd ─────────────────────────────────────────────────────────────
