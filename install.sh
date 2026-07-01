@@ -26,18 +26,30 @@ BINARY="reno-${OS}-${ARCH}"
 URL="$BASE_URL/$BINARY"
 DEST="$INSTALL_DIR/reno"
 
+# Stop existing services so the binary is not locked
+if [ "$OS" = "linux" ]; then
+    systemctl --user stop reno-station 2>/dev/null || true
+    systemctl --user stop reno-edge    2>/dev/null || true
+elif [ "$OS" = "darwin" ]; then
+    launchctl unload ~/Library/LaunchAgents/com.kiiimatz.reno-station.plist 2>/dev/null || true
+    launchctl unload ~/Library/LaunchAgents/com.kiiimatz.reno-edge.plist    2>/dev/null || true
+fi
+
 echo "Downloading reno (${OS}/${ARCH})..."
 mkdir -p "$INSTALL_DIR"
 
+# Download to a temp file then mv — avoids "text file busy" on running binaries
+TMPFILE="$(mktemp)"
 if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$URL" -o "$DEST"
+    curl -fsSL "$URL" -o "$TMPFILE"
 elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$DEST" "$URL"
+    wget -qO "$TMPFILE" "$URL"
 else
     echo "Error: curl or wget is required"; exit 1
 fi
+chmod +x "$TMPFILE"
+mv "$TMPFILE" "$DEST"
 
-chmod +x "$DEST"
 echo "Installed: $DEST"
 
 # Add to PATH in shell profile if needed
@@ -63,3 +75,4 @@ echo "Starting reno..."
 "$DEST" edge
 
 echo "Done. Run 'reno version' to verify."
+echo "Note: open a new terminal (or run 'source ~/.bashrc') to use the 'reno' command."
