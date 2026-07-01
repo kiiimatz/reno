@@ -14,15 +14,23 @@ if ((Get-CimInstance Win32_Processor).Architecture -eq 12) { $Arch = "arm64" }
 $Url = "$BaseUrl/reno-windows-${Arch}.exe"
 $Dest = "$InstallDir\reno.exe"
 
+# Stop existing scheduled tasks so the binary is not locked
+schtasks /End /TN "RenoStation" 2>$null
+schtasks /End /TN "RenoEdge"    2>$null
+Start-Sleep -Seconds 1
+
 Write-Host "Downloading reno (windows/$Arch)..."
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
+# Download to temp file then move — avoids "file in use" errors
+$Tmp = "$InstallDir\reno-new.exe"
 try {
-    Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing
+    Invoke-WebRequest -Uri $Url -OutFile $Tmp -UseBasicParsing
 } catch {
     Write-Error "Download failed: $_"
     exit 1
 }
+Move-Item -Force $Tmp $Dest
 
 Write-Host "Installed: $Dest"
 

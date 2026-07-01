@@ -22,6 +22,10 @@ jobs:
             goarch: amd64
           - goos: darwin
             goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -35,14 +39,16 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
-            -o reno-${{ matrix.goos }}-${{ matrix.goarch }} \
+            -o reno-${{ matrix.goos }}-${{ matrix.goarch }}${EXT} \
             ./cmd/reno
 
       - uses: actions/upload-artifact@v4
         with:
           name: reno-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: reno-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: reno-${{ matrix.goos }}-${{ matrix.goarch }}*
 
   release:
     needs: build
@@ -60,6 +66,8 @@ jobs:
             reno-linux-amd64 \
             reno-linux-arm64 \
             reno-darwin-amd64 \
-            reno-darwin-arm64
+            reno-darwin-arm64 \
+            reno-windows-amd64.exe \
+            reno-windows-arm64.exe
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
